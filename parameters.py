@@ -1,4 +1,13 @@
+from __future__ import print_function
 from fenics import*
+
+# Define right hand side
+def f(t):
+    f = Expression('exp(-10.0*(pow(x[0] - 0.5, 2) + pow(x[1] - \
+                    0.5, 2)))*sign', sign = 1.0, degree = 1)
+    if (int(t) + 0.1 < t):
+        f.sign = 0.0
+    return f
 
 # Define problem parameters
 nu = Constant(0.1)
@@ -12,7 +21,7 @@ gamma = Constant(1000.0)
 dt = 0.01
 
 # Define number of global and fractional time steps
-N = 5
+N = 100
 M = 1
 K = 1
 
@@ -21,9 +30,9 @@ nx = 80
 ny = 20
 
 # Define relaxation parameters
-tau = Constant(0.1)
-tol = 1.0e-6
-maxit = 50
+tau = Constant(0.7)
+tol_relax = 1.0e-12
+maxiter_relax = 10
 
 # Define parameters for Newton's method
 eps = 1.0e-6
