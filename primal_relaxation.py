@@ -104,7 +104,8 @@ def primal_relaxation():
     def a_s(u_s, v_s, phi_s, psi_s):
         return zeta*dot(grad(u_s), grad(phi_s))*dx_s \
              + delta*dot(grad(v_s), grad(phi_s))*dx_s \
-             - v_s*psi_s*dx_s
+             - v_s*psi_s*dx_s \
+             + delta*grad(v_s)[1]*phi_s*ds_s
         
     # Create directory
     directory = os.getcwd()
@@ -264,6 +265,15 @@ def primal_relaxation():
                 solve(A_s == L_s, U_s, bcs_s)
                 (u_s, v_s) = U_s.split(U_s)
                 
+                # Relaxation --> new stuff
+                u_s_new.assign(project(tau*u_s + (1.0 - tau)*u_s_old, V_s.sub(0).collapse()))
+                v_s_new.assign(project(tau*v_s + (1.0 - tau)*v_s_old, V_s.sub(1).collapse()))
+                u_s_old.assign(u_s_new)
+                v_s_old.assign(v_s_new)
+                u_s.assign(u_s_new)
+                v_s.assign(v_s_new)
+                # End of new stuff
+                
                 if stop == True:
                     
                     # Save values
@@ -284,10 +294,10 @@ def primal_relaxation():
                 v_s_n_i.assign(project(v_s_i, V_s.sub(1).collapse()))
                     
             # Define relaxation
-            u_s_new.assign(project(tau*u_s + (1.0 - tau)*u_s_old, V_s.sub(0).collapse()))
-            v_s_new.assign(project(tau*v_s + (1.0 - tau)*v_s_old, V_s.sub(1).collapse()))
-            u_s_old.assign(u_s_new)
-            v_s_old.assign(v_s_new)
+            #u_s_new.assign(project(tau*u_s + (1.0 - tau)*u_s_old, V_s.sub(0).collapse()))
+            #v_s_new.assign(project(tau*v_s + (1.0 - tau)*v_s_old, V_s.sub(1).collapse()))
+            #u_s_old.assign(u_s_new)
+            #v_s_old.assign(v_s_new)
                 
             # Calculate errors on the interface
             u_error = project(interpolate(u_s, V_i.sub(0).collapse()) - \

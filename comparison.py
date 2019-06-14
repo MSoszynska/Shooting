@@ -114,13 +114,13 @@ for i in range(N):
       
     # Compute L2 norms
     print('Errors in L2 norm')
-    u_f_1_L2 = sqrt(abs(assemble(u_f_1**2*dx_f)))
+    u_f_1_L2 = norm(u_f_1, 'L2')
     print('Displacement L2 error for the fluid subdomain: ', str(u_f_1_L2))
-    v_f_1_L2 = sqrt(abs(assemble(v_f_1**2*dx_f)))
+    v_f_1_L2 = norm(v_f_1, 'L2')
     print('Velocity L2 error for the fluid subdomain: ', str(v_f_1_L2))
-    u_s_1_L2 = sqrt(abs(assemble(u_s_1**2*dx_s)))
+    u_s_1_L2 = norm(u_s_1, 'L2')
     print('Displacement L2 error for the solid subdomain: ', str(u_s_1_L2))
-    v_s_1_L2 = sqrt(abs(assemble(v_s_1**2*dx_s)))
+    v_s_1_L2 = norm(v_s_1, 'L2')
     print('Velocity L2 error for the solid subdomain: ', str(v_s_1_L2))
     L2_error_1 = u_f_1_L2 + v_f_1_L2 + u_s_1_L2 + v_s_1_L2
     print('Overall L2 error: ', str(L2_error_1))
@@ -188,13 +188,13 @@ for i in range(N):
     
     # Compute L2 norms
     print('Errors in L2 norm')
-    u_f_2_L2 = sqrt(abs(assemble(u_f_2**2*dx_f)))
+    u_f_2_L2 = norm(u_f_2, 'L2')
     print('Displacement L2 error for the fluid subdomain: ', str(u_f_2_L2))
-    v_f_2_L2 = sqrt(abs(assemble(v_f_2**2*dx_f)))
+    v_f_2_L2 = norm(v_f_2, 'L2')
     print('Velocity L2 error for the fluid subdomain: ', str(v_f_2_L2))
-    u_s_2_L2 = sqrt(abs(assemble(u_s_2**2*dx_s)))
+    u_s_2_L2 = norm(u_s_2, 'L2')
     print('Displacement L2 error for the solid subdomain: ', str(u_s_2_L2))
-    v_s_2_L2 = sqrt(abs(assemble(v_s_2**2*dx_s)))
+    v_s_2_L2 = norm(v_s_2, 'L2')
     print('Velocity L2 error for the solid subdomain: ', str(v_s_2_L2))
     L2_error_2 = u_f_2_L2 + v_f_2_L2 + u_s_2_L2 + v_s_2_L2
     print('Overall L2 error: ', str(L2_error_2))
@@ -265,13 +265,13 @@ for i in range(N):
       
     # Compute L2 norms
     print('Errors in L2 norm')
-    u_f_3_L2 = sqrt(abs(assemble(u_f_3**2*dx_f)))
+    u_f_3_L2 = norm(u_f_3, 'L2')
     print('Displacement L2 error for the fluid subdomain: ', str(u_f_3_L2))
-    v_f_3_L2 = sqrt(abs(assemble(v_f_3**2*dx_f)))
+    v_f_3_L2 = norm(v_f_3, 'L2')
     print('Velocity L2 error for the fluid subdomain: ', str(v_f_3_L2))
-    u_s_3_L2 = sqrt(abs(assemble(u_s_3**2*dx_s)))
+    u_s_3_L2 = norm(u_s_2, 'L2')
     print('Displacement L2 error for the solid subdomain: ', str(u_s_3_L2))
-    v_s_3_L2 = sqrt(abs(assemble(v_s_3**2*dx_s)))
+    v_s_3_L2 = norm(v_s_3, 'L2')
     print('Velocity L2 error for the solid subdomain: ', str(v_s_3_L2))
     L2_error_3 = u_f_3_L2 + v_f_3_L2 + u_s_3_L2 + v_s_3_L2
     print('Overall L2 error: ', str(L2_error_3))

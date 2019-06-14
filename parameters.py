@@ -9,10 +9,10 @@ alpha = Constant(0.01)
 gamma = Constant(1000.0)
 
 # Define time step
-dt = 0.0025
+dt = 0.01
 
 # Define number of global and fractional time steps
-N = 10
+N = 5
 M = 1
 K = 1
 
@@ -23,14 +23,14 @@ ny = 20
 # Define relaxation parameters
 tau = Constant(0.1)
 tol = 1.0e-6
-maxit = 15
+maxit = 50
 
 # Define parameters for Newton's method
 eps = 1.0e-6
-tol_newton = 1.0e-8
+tol_newton = 1.0e-6
 maxiter_newton = 15
 
 # Define parameters for GMRES method
-tol_gmres = 1.0e-8
+tol_gmres = 1.0e-6
 maxiter_gmres = 25
 

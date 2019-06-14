@@ -97,7 +97,8 @@ def primal_shooting():
     def a_s(u_s, v_s, phi_s, psi_s):        
         return zeta*dot(grad(u_s), grad(phi_s))*dx_s \
              + delta*dot(grad(v_s), grad(phi_s))*dx_s \
-             - v_s*psi_s*dx_s
+             - v_s*psi_s*dx_s + \
+             + delta*grad(v_s)[1]*phi_s*ds_s
         
     # Create directory
     directory = os.getcwd()
@@ -370,6 +371,7 @@ def primal_shooting():
             else:
                 print('GMRES method failed to converge.')
                 print('Norm of residual: ', str(res_norm_gmres))
+                break
             
             # Advance solution
             D_new_split = np.split(D_new, 2) 
