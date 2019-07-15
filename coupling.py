@@ -1,28 +1,13 @@
-from __future__ import print_function
-from fenics import*
+from fenics import FunctionSpace, Function
 from parameters import*
 
-# Define symetric projections
-def dirichlet(u, V, W):
+def flip(u, V, param):
     u_v = u.vector()
-    v = Function(W)
+    n = (param.nx + 1)*(param.ny + 1)
+    v = Function(V)
     v_v = v.vector()
-    v2d = vertex_to_dof_map(V)
-    for i in range(nx + 1):
-        v_v[v2d[i]] = u_v[v2d[(nx + 1)*ny + i]]
+    for i in range(n):
+        v_v[i] = u_v[n - i - 1]
     return v
-
-def neumann(u, V, W):
-    u_v = u.vector()
-    v = Function(W)
-    v_v = v.vector()
-    v2d = vertex_to_dof_map(V)
-    for i in range(ny + 1):
-        for j in range(nx + 1):
-            k = i*(nx + 1) + j
-            m = (ny - i)*(nx + 1) + j
-            v_v[v2d[m]] = -u_v[v2d[k]]
-    return v
-
 
 
