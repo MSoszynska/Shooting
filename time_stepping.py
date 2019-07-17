@@ -3,6 +3,9 @@ from coupling import flip
 
 def time_stepping(u, v, fluid, solid, interface, \
                   param, decoupling):
+    
+    # Create a table with numbers of iterations
+    Num_iters = []
 
     # Create time loop
     for i in range(param.N):
@@ -11,7 +14,8 @@ def time_stepping(u, v, fluid, solid, interface, \
         t = param.dt*(i + 1)
         
         # Perform decoupling
-        decoupling(u, v, fluid, solid, interface, param, t)
+        decoupling(u, v, fluid, solid, interface, \
+        param, t, Num_iters)
         
         # Save values
         u.attach()
@@ -33,7 +37,7 @@ def time_stepping(u, v, fluid, solid, interface, \
         v.s_n_i.assign(flip(v.f, \
                 solid.V.sub(1).collapse(), param))
         
-    return
+    return Num_iters
     
             
             

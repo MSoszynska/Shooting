@@ -24,7 +24,7 @@ class Parameters:
                 dt = 0.01, 
 
                 # Define number of global and fractional time steps
-                N = 10,  
+                N = 5,  
                 M = 1, 
                 K = 1, 
 
@@ -34,17 +34,17 @@ class Parameters:
 
                 # Define relaxation parameters
                 tau = Constant(0.7), 
-                tol_relax = 1.0e-12, 
-                maxiter_relax = 20, 
+                tol_relax = 1.0e-9, 
+                maxiter_relax = 25, 
 
                 # Define parameters for Newton's method
                 eps = 1.0e-6, 
-                tol_newton = 1.0e-8, 
+                tol_newton = 1.0e-12, 
                 maxiter_newton = 15, 
 
                 # Define parameters for GMRES method
-                tol_gmres = 1.0e-6, 
-                maxiter_gmres = 25):
+                tol_gmres = 1.0e-12, 
+                maxiter_gmres = 10):
     
         self.nu = nu
         self.beta = beta

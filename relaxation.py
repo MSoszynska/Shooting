@@ -4,7 +4,8 @@ from fluid_problem import fluid_problem
 from solid_problem import solid_problem
 
 # Define relaxation method
-def relaxation(u, v, fluid, solid, interface, param, t):
+def relaxation(u, v, fluid, solid, interface, \
+               param, t, Num_iters):
     
     num_iters = 0
     stop = False
@@ -47,6 +48,7 @@ def relaxation(u, v, fluid, solid, interface, param, t):
                 
             print('Algorithm converged successfully after ', \
                    num_iters, ' iterations.')
+            Num_iters.append(num_iters)
             stop = True
                 
         elif (num_iters == param.maxiter_relax):
@@ -54,4 +56,4 @@ def relaxation(u, v, fluid, solid, interface, param, t):
             print('Maximal number of iterations was reached.')
             stop = True
         
-    return
+    return Num_iters

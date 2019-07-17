@@ -38,8 +38,8 @@ u = Initial(0, 'displacement', fluid.V, solid.V)
 v = Initial(1, 'velocity', fluid.V, solid.V)
 
 # Perform time-stepping with relaxation
-time_stepping(u, v, fluid, solid, interface, \
-              param, shooting)
+Num_iters = time_stepping(u, v, fluid, solid, interface, \
+                          param, shooting)
 
 # Save solution
 for i in range(param.N + 1):
@@ -52,5 +52,10 @@ for i in range(param.N + 1):
     u.s_pvd << u.s_array[i]
     v.s_array[i].rename('Velocity', 'Solid')
     v.s_pvd << v.s_array[i]  
+    
+# Print number of iterations
+for n in Num_iters:
+    
+    print('Number of solved linear systems: ', n)
 
 os.chdir(directory)
