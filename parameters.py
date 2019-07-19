@@ -1,13 +1,16 @@
 from fenics import Expression, Constant
 
+
 # Define right hand side
 def f(t):
-    f = Expression('exp(-10.0*(pow(x[0] - 0.5, 2) + pow(x[1] - \
-                    0.5, 2)))*sign', sign = 1.0, degree = 1)
+    f = Expression(
+        'exp(-10.0*(pow(x[0] - 0.5, 2) + pow(x[1] - 0.5, 2)))*sign', 
+        sign = 1.0, degree = 1)
     if (int(t) + 0.1 < t):
         f.sign = 0.0
     return f
 
+# Define parameters
 class Parameters:
 
     def __init__(self, 
@@ -39,11 +42,11 @@ class Parameters:
 
                 # Define parameters for Newton's method
                 eps = 1.0e-6, 
-                tol_newton = 1.0e-12, 
+                tol_newton = 1.0e-9, 
                 maxiter_newton = 15, 
 
                 # Define parameters for GMRES method
-                tol_gmres = 1.0e-12, 
+                tol_gmres = 1.0e-7, 
                 maxiter_gmres = 10):
     
         self.nu = nu
@@ -72,6 +75,3 @@ class Parameters:
         
         self.tol_gmres = tol_gmres
         self.maxiter_gmres = maxiter_gmres
-
-
-

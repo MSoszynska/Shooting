@@ -1,7 +1,7 @@
 from fenics import Function, FunctionSpace
-from coupling import flip
+from coupling import fluid_to_solid, solid_to_fluid
 
-def time_stepping(u, v, fluid, solid, interface, \
+def time_stepping(u, v, fluid, solid, interface, 
                   param, decoupling):
     
     # Create a table with numbers of iterations
@@ -14,8 +14,8 @@ def time_stepping(u, v, fluid, solid, interface, \
         t = param.dt*(i + 1)
         
         # Perform decoupling
-        decoupling(u, v, fluid, solid, interface, \
-        param, t, Num_iters)
+        Num_iters.append(decoupling(u, v, fluid, solid, 
+                                    interface, param, t))
         
         # Save values
         u.attach()
@@ -28,19 +28,9 @@ def time_stepping(u, v, fluid, solid, interface, \
         v.s_n.assign(v.s)
             
         # Update boundary conditions
-        u.f_n_i.assign(flip(u.s, \
-                fluid.V.sub(0).collapse(), param))
-        v.f_n_i.assign(flip(v.s, \
-                fluid.V.sub(1).collapse(), param))
-        u.s_n_i.assign(flip(u.f, \
-                solid.V.sub(0).collapse(), param))
-        v.s_n_i.assign(flip(v.f, \
-                solid.V.sub(1).collapse(), param))
+        u.f_n_i.assign(solid_to_fluid(u.s, fluid, solid, param, 0))
+        v.f_n_i.assign(solid_to_fluid(v.s, fluid, solid, param, 1))
+        u.s_n_i.assign(fluid_to_solid(u.f, fluid, solid, param, 0))
+        v.s_n_i.assign(fluid_to_solid(v.f, fluid, solid, param, 1))
         
     return Num_iters
-    
-            
-            
-            
-            
-            

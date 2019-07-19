@@ -1,13 +1,35 @@
-from fenics import FunctionSpace, Function
-from parameters import*
+from fenics import Function, FunctionSpace, vertex_to_dof_map
 
-def flip(u, V, param):
+def fluid_to_solid(u, fluid, solid, param, i):
+    
     u_v = u.vector()
-    n = (param.nx + 1)*(param.ny + 1)
-    v = Function(V)
+    v2d_f = vertex_to_dof_map(fluid.V.sub(i).collapse())
+    v = Function(solid.V.sub(i).collapse())
     v_v = v.vector()
-    for i in range(n):
-        v_v[i] = u_v[n - i - 1]
+    v2d_s = vertex_to_dof_map(solid.V.sub(i).collapse())
+    N = param.nx + 1
+    M = param.ny + 1
+    for i in range(2):
+        
+        for j in range(N):
+            
+            v_v[v2d_s[(M - i - 1)*N + j]] = u_v[v2d_f[i*N + j]]
+            
     return v
 
-
+def solid_to_fluid(u, fluid, solid, param, i):
+    
+    u_v = u.vector()
+    v2d_s = vertex_to_dof_map(solid.V.sub(i).collapse())
+    v = Function(fluid.V.sub(i).collapse())
+    v_v = v.vector()
+    v2d_f = vertex_to_dof_map(fluid.V.sub(i).collapse())
+    N = param.nx + 1
+    M = param.ny + 1
+    for i in range(2):
+        
+        for j in range(N):
+            
+            v_v[v2d_f[i*N + j]] = u_v[v2d_s[(M - i - 1)*N + j]]
+            
+    return v

@@ -1,19 +1,17 @@
-from fenics import Function, FunctionSpace, \
-                   project, interpolate, norm, \
-                   Constant
+import numpy as np
+from fenics import (Function, FunctionSpace, 
+                    interpolate, project, norm)
 from fluid_problem import fluid_problem
 from solid_problem import solid_problem
-from scipy.sparse.linalg import LinearOperator
-from scipy.sparse.linalg import lgmres
-import numpy as np
+from scipy.sparse.linalg import LinearOperator, lgmres
 
 # Define shooting function
 def S(u, v, fluid, solid, interface, param, t):
     
     # Save old values
-    u_s = Function(solid.V.sub(0).collapse())
+    u_s = Function(solid.V_u)
     u_s.assign(u.s)
-    v_s = Function(solid.V.sub(1).collapse())
+    v_s = Function(solid.V_v)
     v_s.assign(v.s)
     
     # Perform one iteration
@@ -21,10 +19,8 @@ def S(u, v, fluid, solid, interface, param, t):
     solid_problem(u, v, fluid, solid, interface, param)
         
     # Define shooting function
-    S_1 = interpolate(project(u_s - u.s, solid.V.sub(0).collapse()), \
-                      interface.V.sub(0).collapse())
-    S_2 = interpolate(project(v_s - v.s, solid.V.sub(1).collapse()), \
-                      interface.V.sub(1).collapse())
+    S_1 = interpolate(project(u_s - u.s, solid.V_u), interface.V_u)
+    S_2 = interpolate(project(v_s - v.s, solid.V_v), interface.V_v)
         
     # Represent shooting function as an array
     S_1_array = S_1.vector().get_local()
@@ -34,7 +30,7 @@ def S(u, v, fluid, solid, interface, param, t):
     return [S_array, norm(S_1, 'L2'), norm(S_2, 'L2')]
     
 # Define linear operator for linear solver in shooting method
-def shooting_newton(u, v, fluid, solid, interface, \
+def shooting_newton(u, v, fluid, solid, interface, 
                     param, t, u_i, v_i, S_shooting):
     
     def shooting_gmres(D): 
@@ -51,8 +47,8 @@ def shooting_newton(u, v, fluid, solid, interface, \
         v_eps.vector().set_local(v_i + param.eps*D_split[1])
             
         # Interpolate functions on solid subdomain
-        u_eps_s = interpolate(u_eps, solid.V.sub(0).collapse())
-        v_eps_s = interpolate(v_eps, solid.V.sub(1).collapse())
+        u_eps_s = interpolate(u_eps, solid.V_u)
+        v_eps_s = interpolate(v_eps, solid.V_v)
         u.s.assign(u_eps_s)
         v.s.assign(v_eps_s)
                     
@@ -63,12 +59,12 @@ def shooting_newton(u, v, fluid, solid, interface, \
     
     return shooting_gmres
 
-def shooting(u, v, fluid, solid, interface, \
-             param, t, Num_iters):
+def shooting(u, v, fluid, solid, interface, 
+             param, t):
         
     # Define initial values for Newton's method
-    u_s = Function(solid.V.sub(0).collapse())
-    v_s = Function(solid.V.sub(1).collapse())
+    u_s = Function(solid.V_u)
+    v_s = Function(solid.V_v)
     u_s.assign(u.s_n)
     v_s.assign(v.s_n)
     num_iters = 0
@@ -76,7 +72,7 @@ def shooting(u, v, fluid, solid, interface, \
     stop = False
         
     # Define Newton's method
-    while (stop == False):
+    while not stop:
         
         num_iters += 1
         num_linear += 1
@@ -90,15 +86,15 @@ def shooting(u, v, fluid, solid, interface, \
         print('Error on the interface of velocity: ', S_shooting[2])
             
         # Define linear operator
-        u_s_i = interpolate(u_s, interface.V.sub(0).collapse())
-        v_s_i = interpolate(v_s, interface.V.sub(1).collapse())
+        u_s_i = interpolate(u_s, interface.V_u)
+        v_s_i = interpolate(v_s, interface.V_v)
         u_s_i_array = u_s_i.vector().get_local()
         v_s_i_array = v_s_i.vector().get_local()
-        linear_operator_newton = shooting_newton(u, v, fluid, solid, \
-                                                 interface, param, t, \
-                                                 u_s_i_array, v_s_i_array, \
+        linear_operator_newton = shooting_newton(u, v, fluid, solid, 
+                                                 interface, param, t, 
+                                                 u_s_i_array, v_s_i_array, 
                                                  S_shooting[0])
-        shooting_gmres = LinearOperator((2*param.nx + 2, 2*param.nx + 2), \
+        shooting_gmres = LinearOperator((2*param.nx + 2, 2*param.nx + 2), 
                                         matvec = linear_operator_newton)
             
         # Solve linear system
@@ -108,18 +104,18 @@ def shooting(u, v, fluid, solid, interface, \
             nonlocal num_iters_gmres
             global res_norm_gmres
             num_iters_gmres += 1
-            print('Current iteration of GMRES method: ', \
+            print('Current iteration of GMRES method: ', 
                    num_iters_gmres)
             res_norm_gmres = np.linalg.norm(xk)
             
-        D, exit_code = lgmres(shooting_gmres, -S_shooting[0], \
-                              tol = param.tol_gmres, \
-                              maxiter = param.maxiter_gmres, \
+        D, exit_code = lgmres(shooting_gmres, -S_shooting[0], 
+                              tol = param.tol_gmres, 
+                              maxiter = param.maxiter_gmres, 
                               callback = callback)
         num_linear += num_iters_gmres
         if (exit_code == 0):
             
-            print('GMRES method converged successfully after', \
+            print('GMRES method converged successfully after', 
                    num_iters_gmres, 'iterations.')
             
         else:
@@ -133,16 +129,15 @@ def shooting(u, v, fluid, solid, interface, \
         v_s_i_array += D_split[1]
         u_s_i.vector().set_local(u_s_i_array)
         v_s_i.vector().set_local(v_s_i_array)
-        u_s.assign(interpolate(u_s_i, solid.V.sub(0).collapse()))
-        v_s.assign(interpolate(v_s_i, solid.V.sub(1).collapse()))
+        u_s.assign(interpolate(u_s_i, solid.V_u))
+        v_s.assign(interpolate(v_s_i, solid.V_v))
             
         # Check stop conditions
-        if (S_shooting[1] < param.tol_newton) and \
-           (S_shooting[2] < param.tol_newton):
+        if ((S_shooting[1] < param.tol_newton) and 
+           (S_shooting[2] < param.tol_newton)):
                
-            print('Newton\'s method converged successfully after', num_iters, \
+            print('Newton\'s method converged successfully after', num_iters, 
                   'iterations and solving', num_linear, 'linear systems.')
-            Num_iters.append(num_linear)
             stop = True
             
         elif (num_iters == param.maxiter_newton):
@@ -150,6 +145,4 @@ def shooting(u, v, fluid, solid, interface, \
             print('Newton\'s method failed to converge.')
             stop = True
                 
-    return Num_iters
-    
-    
+    return num_linear

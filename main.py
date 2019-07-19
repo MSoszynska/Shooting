@@ -1,23 +1,23 @@
-from fenics import parameters, Point, \
-                   RectangleMesh, BoundaryMesh, \
-                   SubMesh
-from relaxation import relaxation
-from shooting import shooting
+import os
+
+from fenics import (parameters, RectangleMesh, 
+                    Point, BoundaryMesh, SubMesh)
 from parameters import Parameters
-from spaces import boundary, Inner_boundary, Space
+from spaces import Inner_boundary, Space, boundary
 from initial import Initial
 from time_stepping import time_stepping
-import os
+from relaxation import relaxation
+from shooting import shooting
 
 parameters['allow_extrapolation'] = True
 param = Parameters()
 
 # Create meshes
-mesh_f = RectangleMesh(Point(0.0, 0.0), \
-                       Point(4.0, 1.0), param.nx, param.ny, \
+mesh_f = RectangleMesh(Point(0.0, 0.0), 
+                       Point(4.0, 1.0), param.nx, param.ny, 
                        diagonal = 'right')
-mesh_s = RectangleMesh(Point(0.0, -1.0), \
-                       Point(4.0, 0.0), param.nx, param.ny, \
+mesh_s = RectangleMesh(Point(0.0, -1.0), 
+                       Point(4.0, 0.0), param.nx, param.ny, 
                        diagonal = 'left')
 boundary_mesh = BoundaryMesh(mesh_f, 'exterior')
 inner_boundary = Inner_boundary()
@@ -38,7 +38,7 @@ u = Initial(0, 'displacement', fluid.V, solid.V)
 v = Initial(1, 'velocity', fluid.V, solid.V)
 
 # Perform time-stepping with relaxation
-Num_iters = time_stepping(u, v, fluid, solid, interface, \
+Num_iters = time_stepping(u, v, fluid, solid, interface, 
                           param, shooting)
 
 # Save solution

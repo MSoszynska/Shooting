@@ -1,5 +1,7 @@
-from fenics import FunctionSpace, Function, File
 import os
+
+from fenics import Function, FunctionSpace, File
+
 
 # Define initialization of a function
 class Initial:
@@ -42,5 +44,3 @@ class Initial:
         self.s_array.append(pvd_s)
         
         return
-
-
