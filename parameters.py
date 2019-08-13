@@ -42,7 +42,7 @@ class Parameters:
 
                 # Define parameters for Newton's method
                 eps = 1.0e-6, 
-                tol_newton = 1.0e-9, 
+                tol_newton = 1.0e-11, 
                 maxiter_newton = 15, 
 
                 # Define parameters for GMRES method

@@ -3,7 +3,7 @@ from fenics import (Function, FunctionSpace,
                     interpolate, project, norm)
 from fluid_problem import fluid_problem
 from solid_problem import solid_problem
-from scipy.sparse.linalg import LinearOperator, lgmres
+from scipy.sparse.linalg import LinearOperator, gmres
 
 # Define shooting function
 def S(u, v, fluid, solid, interface, param, t):
@@ -108,10 +108,10 @@ def shooting(u, v, fluid, solid, interface,
                    num_iters_gmres)
             res_norm_gmres = np.linalg.norm(xk)
             
-        D, exit_code = lgmres(shooting_gmres, -S_shooting[0], 
-                              tol = param.tol_gmres, 
-                              maxiter = param.maxiter_gmres, 
-                              callback = callback)
+        D, exit_code = gmres(shooting_gmres, -S_shooting[0], 
+                             tol = param.tol_gmres, 
+                             maxiter = param.maxiter_gmres, 
+                             callback = callback)
         num_linear += num_iters_gmres
         if (exit_code == 0):
             
