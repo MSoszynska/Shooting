@@ -8,7 +8,7 @@ from coupling import solid_to_fluid
 
 
 # Define fluid function
-def fluid_problem(u, v, fluid, solid, interface, param, t):
+def fluid_problem(u, v, fluid, solid, interface, param, t, save = False):
         
     # Store old solutions
     u_f_n_M = Function(fluid.V_u)
@@ -69,6 +69,12 @@ def fluid_problem(u, v, fluid, solid, interface, param, t):
         U_f = Function(fluid.V)
         solve(A_f == L_f, U_f, bcs_f)
         (u_f, v_f) = U_f.split(U_f)
+        
+        # Append solutions to the arrays
+        if save:
+            
+            u.f_array.append(u_f.copy(deepcopy = True))
+            v.f_array.append(v_f.copy(deepcopy = True))
                     
         # Update fluid solution
         u_f_n_M.assign(u_f)
@@ -80,6 +86,6 @@ def fluid_problem(u, v, fluid, solid, interface, param, t):
         
     # Save final values
     u.f.assign(u_f)
-    v.f.assign(v_f)
+    v.f.assign(v_f)    
     
     return 

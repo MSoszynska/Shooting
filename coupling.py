@@ -1,5 +1,6 @@
 from fenics import Function, FunctionSpace, vertex_to_dof_map
 
+# Copy two layers of dofs around the interface from fluid to solid
 def fluid_to_solid(u, fluid, solid, param, i):
     
     u_v = u.vector()
@@ -17,6 +18,7 @@ def fluid_to_solid(u, fluid, solid, param, i):
             
     return v
 
+# Copy two layers of dofs around the interface from solid to fluid
 def solid_to_fluid(u, fluid, solid, param, i):
     
     u_v = u.vector()

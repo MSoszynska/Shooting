@@ -1,6 +1,6 @@
 import numpy as np
 from fenics import (Function, FunctionSpace, 
-                    interpolate, project, norm)
+                    interpolate, project)
 from fluid_problem import fluid_problem
 from solid_problem import solid_problem
 from scipy.sparse.linalg import LinearOperator, gmres
@@ -26,8 +26,8 @@ def S(u, v, fluid, solid, interface, param, t):
     S_1_array = S_1.vector().get_local()
     S_2_array = S_2.vector().get_local()
     S_array = np.concatenate((S_1_array, S_2_array), axis = None)
-            
-    return [S_array, norm(S_1, 'L2'), norm(S_2, 'L2')]
+    
+    return S_array
     
 # Define linear operator for linear solver in shooting method
 def shooting_newton(u, v, fluid, solid, interface, 
@@ -53,7 +53,7 @@ def shooting_newton(u, v, fluid, solid, interface,
         v.s.assign(v_eps_s)
                     
         # Compute shooting function
-        S_eps = S(u, v, fluid, solid, interface, param, t)[0]
+        S_eps = S(u, v, fluid, solid, interface, param, t)
             
         return (S_eps - S_shooting)/param.eps
     
@@ -82,8 +82,11 @@ def shooting(u, v, fluid, solid, interface,
         u.s.assign(u_s)
         v.s.assign(v_s)
         S_shooting = S(u, v, fluid, solid, interface, param, t)
-        print('Error on the interface of displacement: ', S_shooting[1])
-        print('Error on the interface of velocity: ', S_shooting[2])
+        S_shooting_linf = np.max(np.abs(S_shooting))
+        if (num_iters == 1):
+            S_0_linf = S_shooting_linf
+        print('Absolute error on the interface: ', S_shooting_linf)
+        print('Relative error on the interface: ', S_shooting_linf/S_0_linf)
             
         # Define linear operator
         u_s_i = interpolate(u_s, interface.V_u)
@@ -93,7 +96,7 @@ def shooting(u, v, fluid, solid, interface,
         linear_operator_newton = shooting_newton(u, v, fluid, solid, 
                                                  interface, param, t, 
                                                  u_s_i_array, v_s_i_array, 
-                                                 S_shooting[0])
+                                                 S_shooting)
         shooting_gmres = LinearOperator((2*param.nx + 2, 2*param.nx + 2), 
                                         matvec = linear_operator_newton)
             
@@ -108,7 +111,7 @@ def shooting(u, v, fluid, solid, interface,
                    num_iters_gmres)
             res_norm_gmres = np.linalg.norm(xk)
             
-        D, exit_code = gmres(shooting_gmres, -S_shooting[0], 
+        D, exit_code = gmres(shooting_gmres, -S_shooting, 
                              tol = param.tol_gmres, 
                              maxiter = param.maxiter_gmres, 
                              callback = callback)
@@ -133,8 +136,8 @@ def shooting(u, v, fluid, solid, interface,
         v_s.assign(interpolate(v_s_i, solid.V_v))
             
         # Check stop conditions
-        if ((S_shooting[1] < param.tol_newton) and 
-           (S_shooting[2] < param.tol_newton)):
+        if ((S_shooting_linf < param.abs_tol_newton) or 
+            (S_shooting_linf/S_0_linf < param.rel_tol_newton)):
                
             print('Newton\'s method converged successfully after', num_iters, 
                   'iterations and solving', num_linear, 'linear systems.')

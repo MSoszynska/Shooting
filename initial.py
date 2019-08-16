@@ -33,14 +33,3 @@ class Initial:
         self.V_f = V_f
         self.V_s = V_s
     
-    def attach(self):
-        
-        # Copy current values and append to the arrays
-        pvd_f = Function(self.V_f.sub(self.i).collapse())
-        pvd_f.assign(self.f)
-        self.f_array.append(pvd_f)
-        pvd_s = Function(self.V_s.sub(self.i).collapse())
-        pvd_s.assign(self.s)
-        self.s_array.append(pvd_s)
-        
-        return

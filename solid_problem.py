@@ -7,7 +7,7 @@ from coupling import fluid_to_solid
 
 
 # Define solid function
-def solid_problem(u, v, fluid, solid, interface, param):
+def solid_problem(u, v, fluid, solid, interface, param, save = False):
 
     # Store old solutions
     u_s_n_K = Function(solid.V_u)
@@ -59,7 +59,13 @@ def solid_problem(u, v, fluid, solid, interface, param):
         U_s = Function(solid.V)
         solve(A_s == L_s, U_s, bcs_s)
         (u_s, v_s) = U_s.split(U_s)
-                
+        
+        # Append solutions to the arrays
+        if save:
+            
+            u.s_array.append(u_s.copy(deepcopy = True))
+            v.s_array.append(v_s.copy(deepcopy = True))
+            
         # Update solid solution
         u_s_n_K.assign(u_s)
         v_s_n_K.assign(v_s)
@@ -67,7 +73,7 @@ def solid_problem(u, v, fluid, solid, interface, param):
         # Update boundary condition
         v_s_n_i_K.assign(project(v_s_i, solid.V_v))
         
-    # Assign final values
+    # Save final values
     u.s.assign(u_s)
     v.s.assign(v_s)
     

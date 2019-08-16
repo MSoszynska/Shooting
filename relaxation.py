@@ -8,6 +8,9 @@ from solid_problem import solid_problem
 def relaxation(u, v, fluid, solid, interface, 
                param, t):
     
+    # Define initial values for relaxation method
+    u_s = Function(solid.V_u)
+    v_s = Function(solid.V_v)
     num_iters = 0
     stop = False
     
@@ -18,9 +21,7 @@ def relaxation(u, v, fluid, solid, interface,
                num_iters)
         
         # Save old values
-        u_s = Function(solid.V_u)
         u_s.assign(u.s)
-        v_s = Function(solid.V_v)
         v_s.assign(v.s)
     
         # Perform one iteration
@@ -36,16 +37,19 @@ def relaxation(u, v, fluid, solid, interface,
         # Define errors on the interface
         u_error = interpolate(project(u_s - u.s, solid.V_u), 
                   interface.V_u)
-        u_error_L2 = norm(u_error, 'L2')
-        print('Error on the interface of displacement: ', u_error_L2)
+        u_error_linf = norm(u_error.vector(), 'linf')
         v_error = interpolate(project(v_s - v.s, solid.V_v), 
                   interface.V_v)
-        v_error_L2 = norm(v_error, 'L2')
-        print('Error on the interface of velocity: ', v_error_L2)
+        v_error_linf = norm(v_error.vector(), 'linf')
+        error_linf = max(u_error_linf, v_error_linf)
+        if (num_iters == 1):
+            error_0_linf = error_linf
+        print('Absolute error on the interface: ', error_linf)
+        print('Relative error on the interface: ', error_linf/error_0_linf)
         
         # Check stop conditions
-        if ((u_error_L2 < param.tol_relax) and 
-           (v_error_L2 < param.tol_relax)):
+        if ((error_linf < param.abs_tol_relax) or 
+            (error_linf/error_0_linf < param.rel_tol_relax)):
                 
             print('Algorithm converged successfully after ', 
                    num_iters, ' iterations.')

@@ -24,7 +24,7 @@ class Space:
         self.dx = Measure('dx', domain = mesh)
         self.ds = Measure('ds', domain = mesh)
         
-        # Define function space
+        # Define function spaces
         W = FiniteElement('Lagrange', mesh.ufl_cell(), 1)
         self.V = FunctionSpace(mesh, W * W)
         self.V_u = self.V.sub(0).collapse()

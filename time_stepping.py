@@ -1,4 +1,6 @@
 from fenics import Function, FunctionSpace
+from fluid_problem import fluid_problem
+from solid_problem import solid_problem
 from coupling import fluid_to_solid, solid_to_fluid
 
 def time_stepping(u, v, fluid, solid, interface, 
@@ -17,9 +19,9 @@ def time_stepping(u, v, fluid, solid, interface,
         Num_iters.append(decoupling(u, v, fluid, solid, 
                                     interface, param, t))
         
-        # Save values
-        u.attach()
-        v.attach()
+        # Perform final iteration and save solutions
+        fluid_problem(u, v, fluid, solid, interface, param, t, save = True)
+        solid_problem(u, v, fluid, solid, interface, param, save = True)
                 
         # Update solution
         u.f_n.assign(u.f)

@@ -27,9 +27,9 @@ class Parameters:
                 dt = 0.01, 
 
                 # Define number of global and fractional time steps
-                N = 5,  
+                N = 50,  
                 M = 1, 
-                K = 1, 
+                K = 10, 
 
                 # Define number of mesh cells
                 nx = 80,  
@@ -37,16 +37,18 @@ class Parameters:
 
                 # Define relaxation parameters
                 tau = Constant(0.7), 
-                tol_relax = 1.0e-9, 
+                abs_tol_relax = 1.0e-12,
+                rel_tol_relax = 1.0e-6,
                 maxiter_relax = 25, 
 
                 # Define parameters for Newton's method
                 eps = 1.0e-6, 
-                tol_newton = 1.0e-11, 
+                abs_tol_newton = 1.0e-12,
+                rel_tol_newton = 1.0e-6, 
                 maxiter_newton = 15, 
 
                 # Define parameters for GMRES method
-                tol_gmres = 1.0e-7, 
+                tol_gmres = 1.0e-6, 
                 maxiter_gmres = 10):
     
         self.nu = nu
@@ -66,11 +68,13 @@ class Parameters:
         self.ny = ny
         
         self.tau = tau
-        self.tol_relax = tol_relax
+        self.abs_tol_relax = abs_tol_relax
+        self.rel_tol_relax = rel_tol_relax
         self.maxiter_relax = maxiter_relax
         
         self.eps = eps
-        self.tol_newton = tol_newton
+        self.abs_tol_newton = abs_tol_newton
+        self.rel_tol_newton = rel_tol_newton
         self.maxiter_newton = maxiter_newton
         
         self.tol_gmres = tol_gmres

@@ -39,15 +39,18 @@ v = Initial(1, 'velocity', fluid.V, solid.V)
 
 # Perform time-stepping with relaxation
 Num_iters = time_stepping(u, v, fluid, solid, interface, 
-                          param, shooting)
+                          param, relaxation)
 
-# Save solution
-for i in range(param.N + 1):
+# Save solutions in pvd format
+for i in range(param.M*param.N + 1):
     
     u.f_array[i].rename('Displacement', 'Fluid')
     u.f_pvd << u.f_array[i] 
     v.f_array[i].rename('Velocity', 'Fluid')
     v.f_pvd << v.f_array[i]
+    
+for i in range(param.K*param.N + 1):
+    
     u.s_array[i].rename('Displacement', 'Solid')
     u.s_pvd << u.s_array[i]
     v.s_array[i].rename('Velocity', 'Solid')
