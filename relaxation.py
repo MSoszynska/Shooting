@@ -5,12 +5,12 @@ from solid_problem import solid_problem
 
 
 # Define relaxation method
-def relaxation(u, v, fluid, solid, interface, 
-               param, t):
+def relaxation(u_f, v_f, u_s, v_s,
+               fluid, solid, interface, param, t):
     
     # Define initial values for relaxation method
-    u_s = Function(solid.V_u)
-    v_s = Function(solid.V_v)
+    u_s_new = Function(solid.V_split[0])
+    v_s_new = Function(solid.V_split[1])
     num_iters = 0
     stop = False
     
@@ -21,25 +21,25 @@ def relaxation(u, v, fluid, solid, interface,
                num_iters)
         
         # Save old values
-        u_s.assign(u.s)
-        v_s.assign(v.s)
+        u_s_new.assign(u_s.new)
+        v_s_new.assign(v_s.new)
     
         # Perform one iteration
-        fluid_problem(u, v, fluid, solid, interface, param, t)
-        solid_problem(u, v, fluid, solid, interface, param)
+        fluid_problem(u_f, v_f, u_s, v_s, fluid, solid, param, t)
+        solid_problem(u_f, v_f, u_s, v_s, fluid, solid, param)
         
         # Perform relaxation
-        u.s.assign(project(param.tau*u.s 
-                        + (1.0 - param.tau)*u_s, solid.V_u))
-        v.s.assign(project(param.tau*v.s 
-                        + (1.0 - param.tau)*v_s, solid.V_v))
+        u_s.new.assign(project(param.tau*u_s.new
+                    + (1.0 - param.tau)*u_s_new, solid.V_split[0]))
+        v_s.new.assign(project(param.tau*v_s.new
+                    + (1.0 - param.tau)*v_s_new, solid.V_split[1]))
         
         # Define errors on the interface
-        u_error = interpolate(project(u_s - u.s, solid.V_u), 
-                  interface.V_u)
+        u_error = interpolate(project(u_s_new - u_s.new, solid.V_split[0]),
+                  interface.V_split[0])
         u_error_linf = norm(u_error.vector(), 'linf')
-        v_error = interpolate(project(v_s - v.s, solid.V_v), 
-                  interface.V_v)
+        v_error = interpolate(project(v_s_new - v_s.new, solid.V_split[1]),
+                  interface.V_split[1])
         v_error_linf = norm(v_error.vector(), 'linf')
         error_linf = max(u_error_linf, v_error_linf)
         if (num_iters == 1):

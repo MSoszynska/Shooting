@@ -5,31 +5,23 @@ from fenics import Function, FunctionSpace, File
 
 # Define initialization of a function
 class Initial:
-    def __init__(self, i, name, V_f, V_s):
+    def __init__(self, subdomain_name, space_name, V):
         
         # Define initial interface values
-        self.f_n_i = Function(V_f.sub(i).collapse())
-        self.s_n_i = Function(V_s.sub(i).collapse())
+        self.i_new = Function(V)
+        self.i_old = Function(V)
 
         # Define initial values for time loop
-        self.f = Function(V_f.sub(i).collapse())
-        self.s = Function(V_f.sub(i).collapse())
-        self.f_n = Function(V_f.sub(i).collapse())
-        self.s_n = Function(V_s.sub(i).collapse())
+        self.new = Function(V)
+        self.old = Function(V)
         
         # Create arrays of empty functions
-        self.f_array = []
-        self.f_array.append(Function(V_f.sub(i).collapse()))
-        self.s_array = []
-        self.s_array.append(Function(V_s.sub(i).collapse()))
+        self.array = []
+        self.array.append(Function(V))
         
         # Create pvd files
-        self.f_pvd = File('solutions/fluid/' + name + '.pvd')
-        self.s_pvd = File('solutions/solid/' + name + '.pvd')
+        self.pvd = File('solutions/' + subdomain_name +
+                        '/' + space_name + '.pvd')
         
-        # Remember arguments
-        self.i = i
-        self.name = name
-        self.V_f = V_f
-        self.V_s = V_s
-    
+        # Remember space
+        self.V = V

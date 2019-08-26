@@ -3,7 +3,7 @@ import os
 from fenics import (parameters, RectangleMesh, 
                     Point, BoundaryMesh, SubMesh)
 from parameters import Parameters
-from spaces import Inner_boundary, Space, boundary
+from spaces import Inner_boundary, Space
 from initial import Initial
 from time_stepping import time_stepping
 from relaxation import relaxation
@@ -34,27 +34,29 @@ os.makedirs('decoupling')
 os.chdir('decoupling')
 
 # Initialise solution
-u = Initial(0, 'displacement', fluid.V, solid.V)
-v = Initial(1, 'velocity', fluid.V, solid.V)
+u_f = Initial('fluid', 'displacement', fluid.V_split[0])
+v_f = Initial('fluid', 'velocity', fluid.V_split[1])
+u_s = Initial('solid', 'displacement', solid.V_split[0])
+v_s = Initial('solid', 'velocity', solid.V_split[1])
 
 # Perform time-stepping with relaxation
-Num_iters = time_stepping(u, v, fluid, solid, interface, 
-                          param, relaxation)
+Num_iters = time_stepping(u_f, v_f, u_s, v_s,
+                          fluid, solid, interface, param, relaxation)
 
 # Save solutions in pvd format
 for i in range(param.M*param.N + 1):
     
-    u.f_array[i].rename('Displacement', 'Fluid')
-    u.f_pvd << u.f_array[i] 
-    v.f_array[i].rename('Velocity', 'Fluid')
-    v.f_pvd << v.f_array[i]
+    u_f.array[i].rename('Displacement', 'Fluid')
+    u_f.pvd << u_f.array[i]
+    v_f.array[i].rename('Velocity', 'Fluid')
+    v_f.pvd << v_f.array[i]
     
 for i in range(param.K*param.N + 1):
     
-    u.s_array[i].rename('Displacement', 'Solid')
-    u.s_pvd << u.s_array[i]
-    v.s_array[i].rename('Velocity', 'Solid')
-    v.s_pvd << v.s_array[i]  
+    u_s.array[i].rename('Displacement', 'Solid')
+    u_s.pvd << u_s.array[i]
+    v_s.array[i].rename('Velocity', 'Solid')
+    v_s.pvd << v_s.array[i]
     
 # Print number of iterations
 for n in Num_iters:

@@ -1,6 +1,5 @@
 from fenics import Expression, Constant
 
-
 # Define right hand side
 def f(t):
     f = Expression(
@@ -27,9 +26,9 @@ class Parameters:
                 dt = 0.01, 
 
                 # Define number of global and fractional time steps
-                N = 50,  
+                N = 10,
                 M = 1, 
-                K = 10, 
+                K = 1,
 
                 # Define number of mesh cells
                 nx = 80,  

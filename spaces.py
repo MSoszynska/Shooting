@@ -27,5 +27,5 @@ class Space:
         # Define function spaces
         W = FiniteElement('Lagrange', mesh.ufl_cell(), 1)
         self.V = FunctionSpace(mesh, W * W)
-        self.V_u = self.V.sub(0).collapse()
-        self.V_v = self.V.sub(1).collapse()
+        self.V_split = [self.V.sub(0).collapse(),
+                        self.V.sub(1).collapse()]

@@ -4,10 +4,10 @@ from fenics import Function, FunctionSpace, vertex_to_dof_map
 def fluid_to_solid(u, fluid, solid, param, i):
     
     u_v = u.vector()
-    v2d_f = vertex_to_dof_map(fluid.V.sub(i).collapse())
-    v = Function(solid.V.sub(i).collapse())
+    v2d_f = vertex_to_dof_map(fluid.V_split[i])
+    v = Function(solid.V_split[i])
     v_v = v.vector()
-    v2d_s = vertex_to_dof_map(solid.V.sub(i).collapse())
+    v2d_s = vertex_to_dof_map(solid.V_split[i])
     N = param.nx + 1
     M = param.ny + 1
     for i in range(2):
@@ -22,10 +22,10 @@ def fluid_to_solid(u, fluid, solid, param, i):
 def solid_to_fluid(u, fluid, solid, param, i):
     
     u_v = u.vector()
-    v2d_s = vertex_to_dof_map(solid.V.sub(i).collapse())
-    v = Function(fluid.V.sub(i).collapse())
+    v2d_s = vertex_to_dof_map(solid.V_split[i])
+    v = Function(fluid.V_split[i])
     v_v = v.vector()
-    v2d_f = vertex_to_dof_map(fluid.V.sub(i).collapse())
+    v2d_f = vertex_to_dof_map(fluid.V_split[i])
     N = param.nx + 1
     M = param.ny + 1
     for i in range(2):
