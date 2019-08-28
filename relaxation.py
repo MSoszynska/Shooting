@@ -1,11 +1,11 @@
 from fenics import (Function, FunctionSpace, 
                     project, interpolate, norm)
-from fluid_problem import fluid_problem
-from solid_problem import solid_problem
-
+from solve_problem import solve_problem
+from coupling import (solid_to_fluid,
+                      fluid_to_solid)
 
 # Define relaxation method
-def relaxation(u_f, v_f, u_s, v_s,
+def relaxation(u_f, v_f, u_s, v_s, A_f, L_f, A_s, L_s,
                fluid, solid, interface, param, t):
     
     # Define initial values for relaxation method
@@ -25,14 +25,16 @@ def relaxation(u_f, v_f, u_s, v_s,
         v_s_new.assign(v_s.new)
     
         # Perform one iteration
-        fluid_problem(u_f, v_f, u_s, v_s, fluid, solid, param, t)
-        solid_problem(u_f, v_f, u_s, v_s, fluid, solid, param)
+        solve_problem(u_f, v_f, u_s, v_s, fluid, solid,
+                      solid_to_fluid, A_f, L_f, param, t)
+        solve_problem(u_s, v_s, u_f, v_f, solid, fluid,
+                      fluid_to_solid, A_s, L_s, param, t)
         
         # Perform relaxation
-        u_s.new.assign(project(param.tau*u_s.new
-                    + (1.0 - param.tau)*u_s_new, solid.V_split[0]))
-        v_s.new.assign(project(param.tau*v_s.new
-                    + (1.0 - param.tau)*v_s_new, solid.V_split[1]))
+        u_s.new.assign(project(param.tau * u_s.new
+                    + (1.0 - param.tau) * u_s_new, solid.V_split[0]))
+        v_s.new.assign(project(param.tau * v_s.new
+                    + (1.0 - param.tau) * v_s_new, solid.V_split[1]))
         
         # Define errors on the interface
         u_error = interpolate(project(u_s_new - u_s.new, solid.V_split[0]),
@@ -45,7 +47,7 @@ def relaxation(u_f, v_f, u_s, v_s,
         if (num_iters == 1):
             error_0_linf = error_linf
         print('Absolute error on the interface: ', error_linf)
-        print('Relative error on the interface: ', error_linf/error_0_linf)
+        print('Relative error on the interface: ', error_linf / error_0_linf)
         
         # Check stop conditions
         if ((error_linf < param.abs_tol_relax) or 

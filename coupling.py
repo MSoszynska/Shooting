@@ -1,7 +1,7 @@
 from fenics import Function, FunctionSpace, vertex_to_dof_map
 
 # Copy two layers of dofs around the interface from fluid to solid
-def fluid_to_solid(u, fluid, solid, param, i):
+def fluid_to_solid(u, solid, fluid, param, i):
     
     u_v = u.vector()
     v2d_f = vertex_to_dof_map(fluid.V_split[i])
@@ -14,7 +14,7 @@ def fluid_to_solid(u, fluid, solid, param, i):
         
         for j in range(N):
             
-            v_v[v2d_s[(M - i - 1)*N + j]] = u_v[v2d_f[i*N + j]]
+            v_v[v2d_s[(M - i - 1) * N + j]] = u_v[v2d_f[i * N + j]]
             
     return v
 
@@ -32,6 +32,6 @@ def solid_to_fluid(u, fluid, solid, param, i):
         
         for j in range(N):
             
-            v_v[v2d_f[i*N + j]] = u_v[v2d_s[(M - i - 1)*N + j]]
+            v_v[v2d_f[i * N + j]] = u_v[v2d_s[(M - i - 1) * N + j]]
             
     return v

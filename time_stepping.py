@@ -1,7 +1,8 @@
-from fluid_problem import fluid_problem
-from solid_problem import solid_problem
+from solve_problem import solve_problem
+from coupling import (solid_to_fluid,
+                      fluid_to_solid)
 
-def time_stepping(u_f, v_f, u_s, v_s,
+def time_stepping(u_f, v_f, u_s, v_s, A_f, L_f, A_s, L_s,
                   fluid, solid, interface, param, decoupling):
     
     # Create a table with numbers of iterations
@@ -15,13 +16,14 @@ def time_stepping(u_f, v_f, u_s, v_s,
         
         # Perform decoupling
         Num_iters.append(decoupling(u_f, v_f, u_s, v_s,
+                                    A_f, L_f, A_s, L_s,
                                     fluid, solid, interface, param, t))
         
         # Perform final iteration and save solutions
-        fluid_problem(u_f, v_f, u_s, v_s,
-                      fluid, solid, param, t, save = True)
-        solid_problem(u_f, v_f, u_s, v_s,
-                      fluid, solid, param, save = True)
+        solve_problem(u_f, v_f, u_s, v_s, fluid, solid,
+                      solid_to_fluid, A_f, L_f, param, t, save = True)
+        solve_problem(u_s, v_s, u_f, v_f, solid, fluid,
+                      fluid_to_solid, A_s, L_s, param, t, save = True)
                 
         # Update solution
         u_f.old.assign(u_f.new)

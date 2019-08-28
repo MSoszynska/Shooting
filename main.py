@@ -6,6 +6,7 @@ from parameters import Parameters
 from spaces import Inner_boundary, Space
 from initial import Initial
 from time_stepping import time_stepping
+from forms import A_f, L_f, A_s, L_s
 from relaxation import relaxation
 from shooting import shooting
 
@@ -24,8 +25,8 @@ inner_boundary = Inner_boundary()
 mesh_i = SubMesh(boundary_mesh, inner_boundary)
 
 # Create function spaces
-fluid = Space(mesh_f)
-solid = Space(mesh_s)
+fluid = Space(mesh_f, param.M)
+solid = Space(mesh_s, param.K)
 interface = Space(mesh_i)
 
 # Create directory
@@ -40,7 +41,7 @@ u_s = Initial('solid', 'displacement', solid.V_split[0])
 v_s = Initial('solid', 'velocity', solid.V_split[1])
 
 # Perform time-stepping with relaxation
-Num_iters = time_stepping(u_f, v_f, u_s, v_s,
+Num_iters = time_stepping(u_f, v_f, u_s, v_s, A_f, L_f, A_s, L_s,
                           fluid, solid, interface, param, relaxation)
 
 # Save solutions in pvd format

@@ -3,7 +3,7 @@ from fenics import Expression, Constant
 # Define right hand side
 def f(t):
     f = Expression(
-        'exp(-10.0*(pow(x[0] - 0.5, 2) + pow(x[1] - 0.5, 2)))*sign', 
+        'exp(-10.0 * (pow(x[0] - 0.5, 2) + pow(x[1] - 0.5, 2))) * sign',
         sign = 1.0, degree = 1)
     if (int(t) + 0.1 < t):
         f.sign = 0.0
@@ -27,7 +27,7 @@ class Parameters:
 
                 # Define number of global and fractional time steps
                 N = 10,
-                M = 1, 
+                M = 1,
                 K = 1,
 
                 # Define number of mesh cells

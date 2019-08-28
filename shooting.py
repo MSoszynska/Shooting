@@ -1,12 +1,13 @@
 import numpy as np
 from fenics import (Function, FunctionSpace, 
                     interpolate, project)
-from fluid_problem import fluid_problem
-from solid_problem import solid_problem
+from solve_problem import solve_problem
+from coupling import (solid_to_fluid,
+                      fluid_to_solid)
 from scipy.sparse.linalg import LinearOperator, gmres
 
 # Define shooting function
-def S(u_f, v_f, u_s, v_s,
+def S(u_f, v_f, u_s, v_s, A_f, L_f, A_s, L_s,
       fluid, solid, interface, param, t):
     
     # Save old values
@@ -16,8 +17,10 @@ def S(u_f, v_f, u_s, v_s,
     v_s_new.assign(v_s.new)
     
     # Perform one iteration
-    fluid_problem(u_f, v_f, u_s, v_s, fluid, solid, param, t)
-    solid_problem(u_f, v_f, u_s, v_s, fluid, solid, param)
+    solve_problem(u_f, v_f, u_s, v_s, fluid, solid,
+                  solid_to_fluid, A_f, L_f, param, t)
+    solve_problem(u_s, v_s, u_f, v_f, solid, fluid,
+                  fluid_to_solid, A_s, L_s, param, t)
         
     # Define shooting function
     S_1 = interpolate(project(u_s_new - u_s.new, solid.V_split[0]),
@@ -33,8 +36,8 @@ def S(u_f, v_f, u_s, v_s,
     return S_array
     
 # Define linear operator for linear solver in shooting method
-def shooting_newton(u_f, v_f, u_s, v_s, fluid, solid, interface,
-                    param, t, u_i, v_i, S_shooting):
+def shooting_newton(u_f, v_f, u_s, v_s, A_f, L_f, A_s, L_s,
+                    fluid, solid, interface, param, t, u_i, v_i, S_shooting):
     
     def shooting_gmres(D): 
             
@@ -56,13 +59,14 @@ def shooting_newton(u_f, v_f, u_s, v_s, fluid, solid, interface,
         v_s.new.assign(v_eps_s)
                     
         # Compute shooting function
-        S_eps = S(u_f, v_f, u_s, v_s, fluid, solid, interface, param, t)
+        S_eps = S(u_f, v_f, u_s, v_s, A_f, L_f, A_s, L_s,
+                  fluid, solid, interface, param, t)
             
-        return (S_eps - S_shooting)/param.eps
+        return (S_eps - S_shooting) / param.eps
     
     return shooting_gmres
 
-def shooting(u_f, v_f, u_s, v_s,
+def shooting(u_f, v_f, u_s, v_s, A_f, L_f, A_s, L_s,
              fluid, solid, interface, param, t):
         
     # Define initial values for Newton's method
@@ -84,7 +88,9 @@ def shooting(u_f, v_f, u_s, v_s,
         # Define right hand side
         u_s.new.assign(u_s_new)
         v_s.new.assign(v_s_new)
-        S_shooting = S(u_f, v_f, u_s, v_s, fluid, solid, interface, param, t)
+        S_shooting = S(u_f, v_f, u_s, v_s,
+                       A_f, L_f, A_s, L_s,
+                       fluid, solid, interface, param, t)
         S_shooting_linf = np.max(np.abs(S_shooting))
         if (num_iters == 1):
             S_0_linf = S_shooting_linf
@@ -97,10 +103,11 @@ def shooting(u_f, v_f, u_s, v_s,
         u_s_i_array = u_s_i.vector().get_local()
         v_s_i_array = v_s_i.vector().get_local()
         linear_operator_newton = shooting_newton(u_f, v_f, u_s, v_s,
+                                                 A_f, L_f, A_s, L_s,
                                                  fluid, solid, interface,
                                                  param, t, u_s_i_array,
                                                  v_s_i_array, S_shooting)
-        shooting_gmres = LinearOperator((2*param.nx + 2, 2*param.nx + 2), 
+        shooting_gmres = LinearOperator((2 * param.nx + 2, 2 * param.nx + 2),
                                         matvec = linear_operator_newton)
             
         # Solve linear system

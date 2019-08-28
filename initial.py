@@ -1,7 +1,4 @@
-import os
-
 from fenics import Function, FunctionSpace, File
-
 
 # Define initialization of a function
 class Initial:

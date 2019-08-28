@@ -13,12 +13,12 @@ class Inner_boundary(SubDomain):
 
 # Store space attributes
 class Space:
-    def __init__(self, mesh):
+    def __init__(self, mesh, N = 0):
         
         # Define mesh parameters
         self.mesh = mesh
         self.h = CellDiameter(mesh)
-        self.n = FacetNormal(mesh)
+        self.normal = FacetNormal(mesh)
         
         # Define measures
         self.dx = Measure('dx', domain = mesh)
@@ -29,3 +29,7 @@ class Space:
         self.V = FunctionSpace(mesh, W * W)
         self.V_split = [self.V.sub(0).collapse(),
                         self.V.sub(1).collapse()]
+
+        # Define number of fractional time-steps
+        self.N = N
+
