@@ -5,7 +5,10 @@ from coupling import (solid_to_fluid,
                       fluid_to_solid)
 
 # Define relaxation method
-def relaxation(u_f, v_f, u_s, v_s, A_f, L_f, A_s, L_s,
+def relaxation(u_f, v_f, u_s, v_s,
+               L_f_0, L_s_0,
+               A_f, L_f, A_s, L_s,
+               first_time_step,
                fluid, solid, interface, param, t):
     
     # Define initial values for relaxation method
@@ -17,8 +20,7 @@ def relaxation(u_f, v_f, u_s, v_s, A_f, L_f, A_s, L_s,
     while not stop:
         
         num_iters += 1
-        print('Current iteration of relaxation method: ', 
-               num_iters)
+        print(f'Current iteration of relaxation method: {num_iters}')
         
         # Save old values
         u_s_new.assign(u_s.new)
@@ -26,9 +28,11 @@ def relaxation(u_f, v_f, u_s, v_s, A_f, L_f, A_s, L_s,
     
         # Perform one iteration
         solve_problem(u_f, v_f, u_s, v_s, fluid, solid,
-                      solid_to_fluid, A_f, L_f, param, t)
+                      solid_to_fluid, L_f_0,
+                      A_f, L_f, first_time_step, param, t)
         solve_problem(u_s, v_s, u_f, v_f, solid, fluid,
-                      fluid_to_solid, A_s, L_s, param, t)
+                      fluid_to_solid, L_s_0,
+                      A_s, L_s, first_time_step, param, t)
         
         # Perform relaxation
         u_s.new.assign(project(param.tau * u_s.new
@@ -44,22 +48,30 @@ def relaxation(u_f, v_f, u_s, v_s, A_f, L_f, A_s, L_s,
                   interface.V_split[1])
         v_error_linf = norm(v_error.vector(), 'linf')
         error_linf = max(u_error_linf, v_error_linf)
-        if (num_iters == 1):
+        if num_iters == 1:
+
             error_0_linf = error_linf
-        print('Absolute error on the interface: ', error_linf)
-        print('Relative error on the interface: ', error_linf / error_0_linf)
+
+        print(f'Absolute error on the interface: {error_linf}')
+        print(f'Relative error on the interface: {error_linf / error_0_linf}')
         
         # Check stop conditions
-        if ((error_linf < param.abs_tol_relax) or 
-            (error_linf/error_0_linf < param.rel_tol_relax)):
+        if (error_linf < param.abs_tol_relax or
+                error_linf/error_0_linf < param.rel_tol_relax):
                 
-            print('Algorithm converged successfully after ', 
-                   num_iters, ' iterations.')
+            print(f'Algorithm converged successfully after '
+                  f'{num_iters} iterations')
             stop = True
                 
-        elif (num_iters == param.maxiter_relax):
+        elif num_iters == param.maxiter_relax:
                 
             print('Maximal number of iterations was reached.')
             stop = True
+
+    u_f.iterations.append(num_iters)
+    v_f.iterations.append(num_iters)
+    u_s.iterations.append(num_iters)
+    u_s.iterations.append(num_iters)
         
-    return num_iters
+    return
+

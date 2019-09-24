@@ -2,11 +2,14 @@ from fenics import Expression, Constant
 
 # Define right hand side
 def f(t):
+
     f = Expression(
         'exp(-10.0 * (pow(x[0] - 0.5, 2) + pow(x[1] - 0.5, 2))) * sign',
         sign = 1.0, degree = 1)
-    if (int(t) + 0.1 < t):
+    if int(t) + 0.1 < t:
+
         f.sign = 0.0
+
     return f
 
 # Define parameters
@@ -22,12 +25,16 @@ class Parameters:
                 alpha = Constant(0.01), 
                 gamma = Constant(1000.0), 
 
-                # Define time step
-                dt = 0.01, 
+                # Define time step on the coarsest level
+                dt = 0.02,
 
-                # Define number of global and fractional time steps
-                N = 10,
-                M = 1,
+                # Define number of global time steps on the coarsest level
+                N = 50,
+
+                # Define number of fractional time-steps for fluid
+                M = 2,
+
+                # Define number of fractional time-steps for solid
                 K = 1,
 
                 # Define number of mesh cells
@@ -48,7 +55,15 @@ class Parameters:
 
                 # Define parameters for GMRES method
                 tol_gmres = 1.0e-6, 
-                maxiter_gmres = 10):
+                maxiter_gmres = 10,
+
+                # Choose decoupling method
+                relaxation = True,
+                shooting = False,
+
+                # Choose goal functional
+                J1 = True,
+                J2 = False):
     
         self.nu = nu
         self.beta = beta
@@ -60,7 +75,9 @@ class Parameters:
         self.dt = dt
         
         self.N = N
+
         self.M = M
+
         self.K = K
         
         self.nx = nx
@@ -78,3 +95,9 @@ class Parameters:
         
         self.tol_gmres = tol_gmres
         self.maxiter_gmres = maxiter_gmres
+
+        self.relaxation = relaxation
+        self.shooting = shooting
+
+        self.J1 = J1
+        self.J2 = J2

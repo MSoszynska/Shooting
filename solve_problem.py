@@ -1,3 +1,10 @@
+Wątki
+Używasz 3,85 GB (25%) z 15 GB
+Zarządzaj
+Warunki · Prywatność · Zasady programu
+Ostatnia aktywność konta: 0 minut temu
+Obecnie używane z 1 innej lokalizacji · Szczegóły
+
 from fenics import (Function, FunctionSpace, project,
                     DirichletBC, Constant, TrialFunction, split,
                     TestFunction, solve)
@@ -6,7 +13,8 @@ from spaces import boundary
 # Define a function solving a problem on a subdomain
 def solve_problem(u, v, u_interface, v_interface,
                   space, space_interface, transfer_function,
-                  A, L, param, t, save = False):
+                  L_0, A, L, first_time_step,
+                  param, t, save = False):
 
     # Store old solutions
     u_n = Function(space.V_split[0])
@@ -56,18 +64,26 @@ def solve_problem(u, v, u_interface, v_interface,
 
          # Define scheme
          a = A(u_new, v_new, phi, psi, space, param)
-         l = L(u_n, v_n, u_i, v_i, u_n_i, v_n_i,
-               phi, psi, space, param, t)
+         if first_time_step and n == 0:
+
+             l = L_0(u_n, v_n, u_i, v_i, u_n_i, v_n_i,
+                     phi, psi, space, param, t)
+
+         else:
+
+             l = L(u_n, v_n, u_i, v_i, u_n_i, v_n_i,
+                   phi, psi, space, param, t)
 
          # Solve fluid problem
          U_new = Function(space.V)
          solve(a == l, U_new, bcs)
          (u_new, v_new) = U_new.split(U_new)
 
-         # Append solutions to the arrays
+         # Save solutions
          if save:
-             u.array.append(u_new.copy(deepcopy = True))
-             v.array.append(v_new.copy(deepcopy = True))
+
+             u.save(u_new)
+             v.save(v_new)
 
          # Update fluid solution
          u_n.assign(u_new)
