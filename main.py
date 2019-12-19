@@ -1,51 +1,74 @@
 import os
 
-from fenics import (parameters, RectangleMesh, 
-                    Point, BoundaryMesh, SubMesh,
-                    HDF5File, MPI)
+from fenics import (
+    parameters,
+    RectangleMesh,
+    Point,
+    BoundaryMesh,
+    SubMesh,
+    HDF5File,
+    MPI,
+)
 from parameters import Parameters
 from spaces import Inner_boundary, Space
-from initial import Initial
+from time_structure import TimeLine, split
 from time_stepping import time_stepping
-from forms import (A_f, L_f, A_s, L_s,
-                   L_f_adjoint_0, L_s_adjoint_0,
-                   A_f_adjoint, L_f_adjoint,
-                   A_s_adjoint, L_s_adjoint)
+from forms import (
+    bilinear_form_fluid,
+    functional_fluid,
+    bilinear_form_solid,
+    functional_solid,
+    functional_fluid_adjoint_initial,
+    functional_solid_adjoint_initial,
+    bilinear_form_fluid_adjoint,
+    functional_fluid_adjoint,
+    bilinear_form_solid_adjoint,
+    functional_solid_adjoint,
+)
 from relaxation import relaxation
 from shooting import shooting
-from error_estimate import compute_residuals
+from compute_residuals import compute_residuals
+from refine import refine
 
-parameters['allow_extrapolation'] = True
+parameters["allow_extrapolation"] = True
 param = Parameters()
 
 # Create meshes
-mesh_f = RectangleMesh(Point(0.0, 0.0), 
-                       Point(4.0, 1.0), param.nx, param.ny, 
-                       diagonal = 'right')
-mesh_s = RectangleMesh(Point(0.0, -1.0), 
-                       Point(4.0, 0.0), param.nx, param.ny, 
-                       diagonal = 'left')
-boundary_mesh = BoundaryMesh(mesh_f, 'exterior')
+mesh_f = RectangleMesh(
+    Point(0.0, 0.0),
+    Point(4.0, 1.0),
+    param.NUMBER_ELEMENTS_HORIZONTAL,
+    param.NUMBER_ELEMENTS_VERTICAL,
+    diagonal="right",
+)
+mesh_s = RectangleMesh(
+    Point(0.0, -1.0),
+    Point(4.0, 0.0),
+    param.NUMBER_ELEMENTS_HORIZONTAL,
+    param.NUMBER_ELEMENTS_VERTICAL,
+    diagonal="left",
+)
+boundary_mesh = BoundaryMesh(mesh_f, "exterior")
 inner_boundary = Inner_boundary()
 mesh_i = SubMesh(boundary_mesh, inner_boundary)
 
 # Create function spaces
-fluid = Space(mesh_f, param.M)
-solid = Space(mesh_s, param.K)
+fluid = Space(mesh_f, param.LOCAL_MESH_SIZE_FLUID)
+solid = Space(mesh_s, param.LOCAL_MESH_SIZE_SOLID)
 interface = Space(mesh_i)
 
-# Create directory
-try:
-
-    os.makedirs(str(param.N))
-
-except FileExistsError:
-
-    pass
-os.chdir(str(param.N))
+# Create time interval structures
+fluid_timeline = TimeLine()
+fluid_timeline.unify(
+    param.TIME_STEP, param.LOCAL_MESH_SIZE_FLUID, param.GLOBAL_MESH_SIZE
+)
+solid_timeline = TimeLine()
+solid_timeline.unify(
+    param.TIME_STEP, param.LOCAL_MESH_SIZE_SOLID, param.GLOBAL_MESH_SIZE
+)
 
 # Set deoupling method
-if param.relaxation:
+if param.RELAXATION:
 
     decoupling = relaxation
 
@@ -53,21 +76,101 @@ else:
 
     decoupling = shooting
 
+# Refine time meshes
+fluid_size = fluid_timeline.size_global - fluid_timeline.size
+solid_size = solid_timeline.size_global - solid_timeline.size
+for i in range(0):
+
+    fluid_refinements_txt = open(
+        f"fluid_{fluid_size}-{solid_size}_refinements.txt", "r"
+    )
+    solid_refinements_txt = open(
+        f"solid_{fluid_size}-{solid_size}_refinements.txt", "r"
+    )
+    fluid_refinements = [bool(int(x)) for x in fluid_refinements_txt.read()]
+    solid_refinements = [bool(int(x)) for x in solid_refinements_txt.read()]
+    fluid_refinements_txt.close()
+    solid_refinements_txt.close()
+    fluid_timeline.refine(fluid_refinements)
+    solid_timeline.refine(solid_refinements)
+    split(fluid_timeline, solid_timeline)
+    fluid_size = fluid_timeline.size_global - fluid_timeline.size
+    solid_size = solid_timeline.size_global - solid_timeline.size
+    print(f'Global number of macro time-steps: {fluid_timeline.size}')
+    print(f'Global number of micro time-steps in the fluid timeline: {fluid_size}')
+    print(f'Global number of micro time-steps in the solid timeline: {solid_size}')
+
+# Create directory
+fluid_size = fluid_timeline.size_global - fluid_timeline.size
+solid_size = solid_timeline.size_global - solid_timeline.size
+try:
+
+    os.makedirs(f"{fluid_size}-{solid_size}")
+
+except FileExistsError:
+
+    pass
+os.chdir(f"{fluid_size}-{solid_size}")
+
 # Perform time-stepping of the primal problem
 adjoint = False
-u_f, v_f, u_s, v_s = time_stepping(L_f, L_s, A_f, L_f, A_s, L_s,
-                                   fluid, solid, interface, param,
-                                   decoupling, adjoint)
+time_stepping(
+    functional_fluid,
+    functional_solid,
+    bilinear_form_fluid,
+    functional_fluid,
+    bilinear_form_solid,
+    functional_solid,
+    fluid,
+    solid,
+    interface,
+    param,
+    decoupling,
+    fluid_timeline,
+    solid_timeline,
+    adjoint,
+)
+fluid_timeline.load(fluid, "fluid", adjoint)
+solid_timeline.load(solid, "solid", adjoint)
 
 # Perform time-stepping of the adjoint problem
 adjoint = True
-z_f, y_f, z_s, y_s = time_stepping(L_f_adjoint_0, L_s_adjoint_0,
-                                   A_f_adjoint, L_f_adjoint,
-                                   A_s_adjoint, L_s_adjoint,
-                                   fluid, solid, interface, param,
-                                   decoupling, adjoint)
+time_stepping(
+    functional_fluid_adjoint_initial,
+    functional_solid_adjoint_initial,
+    bilinear_form_fluid_adjoint,
+    functional_fluid_adjoint,
+    bilinear_form_solid_adjoint,
+    functional_solid_adjoint,
+    fluid,
+    solid,
+    interface,
+    param,
+    decoupling,
+    fluid_timeline,
+    solid_timeline,
+    adjoint,
+)
+fluid_timeline.load(fluid, "fluid", adjoint)
+solid_timeline.load(solid, "solid", adjoint)
 
 # Compute residuals
-residuals = compute_residuals(u_f, v_f, u_s, v_s, z_f, y_f,
-                              z_s, y_s, fluid, solid, param)
+(
+    primal_residual_fluid,
+    primal_residual_solid,
+    adjoint_residual_fluid,
+    adjoint_residual_solid,
+    goal_functional,
+) = compute_residuals(fluid, solid, param, fluid_timeline, solid_timeline)
+
+# Refine mesh
+refine(
+    primal_residual_fluid,
+    primal_residual_solid,
+    adjoint_residual_fluid,
+    adjoint_residual_solid,
+    fluid_timeline,
+    solid_timeline,
+)
+
 

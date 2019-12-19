@@ -1,665 +1,1436 @@
-
-Przejdź do treści
-Korzystanie z usługi Gmail z czytnikami ekranu
-Wątki
-Używasz 3,85 GB (25%) z 15 GB
-Zarządzaj
-Warunki · Prywatność · Zasady programu
-Ostatnia aktywność konta: 0 minut temu
-Obecnie używane z 1 innej lokalizacji · Szczegóły
-
 from fenics import project, assemble, dot, grad
-from math import log, sqrt
-from forms import (a_f, a_s,
-                   a_f_adjoint, a_s_adjoint,
-                   char_func_J1, char_func_J2)
-from parameters import f
-from coupling import (fluid_to_solid,
-                      solid_to_fluid)
+from forms import (
+    form_fluid,
+    form_solid,
+    form_fluid_adjoint,
+    form_solid_adjoint,
+    characteristic_function_fluid,
+    characteristic_function_solid,
+    gauss,
+)
+from parameters import Parameters, external_force
+from spaces import Space
+from time_structure import MicroTimeStep, TimeLine
 
-# Copy an array to the same space and in the same direction
-def copy_array_right(U, space, param):
+# Copy a list to the same space and in the same direction
+def copy_list_forward(timeline: TimeLine, function_name):
 
-    return [U[n].copy(deepcopy = True)
-            for n in range(param.N * space.N + 1)]
+    array = []
+    macrotimestep = timeline.head
+    global_size = timeline.size
+    for n in range(global_size):
 
-# Copy an array to the same space and in the opposite direction
-def copy_array_left(Z, space, param):
+        microtimestep = macrotimestep.head
+        local_size = macrotimestep.size
+        for m in range(local_size):
 
-    return [Z[param.N * space.N - 1 - n].copy(deepcopy = True)
-            for n in range(param.N * space.N + 1)]
+            function = microtimestep.functions[function_name]
+            if not microtimestep.after is None:
 
-# Extrapolate an array to a different space in the same direction
-def extrapolate_array_right(U, space, space_interface,
-                            param, transfer_function,
-                            subspace_index):
-    W = []
-    W.append(transfer_function(U[0], space,
-                               space_interface,
-                               param, subspace_index))
-    for i in range(param.N):
+                array.append(function.copy(deepcopy=True))
 
-        n = i + 1
-        for j in range(space.N):
+            if (microtimestep.after is None) and (macrotimestep.after is None):
 
-            m = j + 1
-            W.append(project((space.N - m)
-                             / space.N
-                             * transfer_function(U[space_interface.N
-                                                   * (n - 1)], space,
-                                                 space_interface,
-                                                 param, subspace_index)
-                             + m / space.N
-                             * transfer_function(U[space_interface.N
-                                                   * n], space,
-                                                 space_interface, param,
-                                                 subspace_index),
-                             space.V_split[subspace_index]))
+                array.append(function.copy(deepcopy=True))
 
-    return W
+            microtimestep = microtimestep.after
 
-# Extrapolate an array to a different space in the opposite direction
-def extrapolate_array_left(Z, space, space_interface,
-                           param, transfer_function,
-                           subspace_index):
-    W = []
-    W.append(transfer_function(Z[space_interface.N * param.N], space,
-                               space_interface,
-                               param, subspace_index))
-    for i in range(param.N):
+        macrotimestep = macrotimestep.after
 
-        n = param.N - i - 1
-        for j in range(space.N):
+    return array
 
-            m = j + 1
-            W.append(project((space.N - m)
-                             / space.N
-                             * transfer_function(Z[space_interface.N
-                                                   * (n + 1)], space,
-                                                 space_interface,
-                                                 param, subspace_index)
-                             + m / space.N
-                             * transfer_function(Z[space_interface.N
-                                                   * n], space,
-                                                 space_interface,
-                                                 param, subspace_index),
-                             space.V_split[subspace_index]))
 
-    return W
+# Copy a list to the same space and in the opposite direction
+def copy_list_backward(timeline: TimeLine, function_name):
+
+    array = []
+    macrotimestep = timeline.tail
+    global_size = timeline.size
+    for n in range(global_size):
+
+        microtimestep = macrotimestep.tail
+        local_size = macrotimestep.size
+        for m in range(local_size):
+
+            function = microtimestep.functions[function_name]
+            if not microtimestep.before is None:
+
+                array.append(function.copy(deepcopy=True))
+
+            if (microtimestep.before is None) and (
+                macrotimestep.before is None
+            ):
+
+                array.append(function.copy(deepcopy=True))
+
+            microtimestep = microtimestep.before
+
+        macrotimestep = macrotimestep.before
+
+    return array
+
+
+# Extrapolate a list to a different space in the same direction
+def extrapolate_list_forward(
+    space: Space,
+    space_timeline: TimeLine,
+    space_interface: Space,
+    space_interface_timeline: TimeLine,
+    function_name,
+    param: Parameters,
+    transfer_function,
+    subspace_index,
+):
+    array = []
+    space_macrotimestep = space_timeline.head
+    space_interface_macrotimestep = space_interface_timeline.head
+    function = space_interface_macrotimestep.head.functions[function_name]
+    array.append(
+        transfer_function(
+            function, space, space_interface, param, subspace_index
+        )
+    )
+    global_size = space_timeline.size
+    for n in range(global_size):
+
+        space_microtimestep = space_macrotimestep.head
+        local_size = space_macrotimestep.size - 1
+        for m in range(local_size):
+
+            extrapolation_proportion = (
+                space_macrotimestep.tail.point
+                - space_microtimestep.after.point
+            ) / space_macrotimestep.dt
+            function_old = space_interface_macrotimestep.head.functions[
+                function_name
+            ]
+            function_new = space_interface_macrotimestep.tail.functions[
+                function_name
+            ]
+            array.append(
+                project(
+                    extrapolation_proportion
+                    * transfer_function(
+                        function_old,
+                        space,
+                        space_interface,
+                        param,
+                        subspace_index,
+                    )
+                    + (1.0 - extrapolation_proportion)
+                    * transfer_function(
+                        function_new,
+                        space,
+                        space_interface,
+                        param,
+                        subspace_index,
+                    ),
+                    space.function_space_split[subspace_index],
+                )
+            )
+            space_microtimestep = space_microtimestep.after
+
+        space_macrotimestep = space_macrotimestep.after
+        space_interface_macrotimestep = space_interface_macrotimestep.after
+
+    return array
+
+
+# Extrapolate a list to a different space in the same direction
+def extrapolate_list_backward(
+    space: Space,
+    space_timeline: TimeLine,
+    space_interface: Space,
+    space_interface_timeline: TimeLine,
+    function_name,
+    param: Parameters,
+    transfer_function,
+    subspace_index,
+):
+    array = []
+    space_macrotimestep = space_timeline.head
+    space_interface_macrotimestep = space_interface_timeline.tail
+    function = space_interface_macrotimestep.tail.functions[function_name]
+    array.append(
+        transfer_function(
+            function, space, space_interface, param, subspace_index
+        )
+    )
+    global_size = space_timeline.size
+    for n in range(global_size):
+
+        space_microtimestep = space_macrotimestep.head
+        local_size = space_macrotimestep.size - 1
+        for m in range(local_size):
+
+            extrapolation_proportion = (
+                space_macrotimestep.tail.point
+                - space_microtimestep.after.point
+            ) / space_macrotimestep.dt
+            function_old = space_interface_macrotimestep.tail.functions[
+                function_name
+            ]
+            function_new = space_interface_macrotimestep.head.functions[
+                function_name
+            ]
+            array.append(
+                project(
+                    extrapolation_proportion
+                    * transfer_function(
+                        function_old,
+                        space,
+                        space_interface,
+                        param,
+                        subspace_index,
+                    )
+                    + (1.0 - extrapolation_proportion)
+                    * transfer_function(
+                        function_new,
+                        space,
+                        space_interface,
+                        param,
+                        subspace_index,
+                    ),
+                    space.function_space_split[subspace_index],
+                )
+            )
+            space_microtimestep = space_microtimestep.after
+
+        space_macrotimestep = space_macrotimestep.after
+        space_interface_macrotimestep = space_interface_macrotimestep.before
+
+    return array
+
 
 # Define linear extrapolation
-def linear_extrapolation(U, m, t, space, param):
+def linear_extrapolation(array, m, time, microtimestep: MicroTimeStep):
 
-    return ((U[m] - U[m - 1]) * space.N / param.dt * t
-           + U[m - 1] * m - U[m] * (m - 1))
+    time_step = microtimestep.before.dt
+    point = microtimestep.point
+
+    return (array[m] - array[m - 1]) / time_step * time + (
+        array[m - 1] * point - array[m] * (point - time_step)
+    ) / time_step
+
 
 # Define reconstruction of the primal problem
-def primal_reconstruction(U, m, t, space, param):
+def primal_reconstruction(array, m, time, microtimestep: MicroTimeStep):
 
-    a = ((U[m + 1] - 2 * U[m] + U[m - 1]) * space.N * space.N
-         / (2.0 * param.dt * param.dt))
-    b = ((-(2 * m - 1) * U[m + 1] + 4 * m * U[m]
-          - (2 * m + 1) * U[m - 1]) * space.N / (2.0 * param.dt))
-    c = (0.5 * ((m * m - m) * U[m + 1] + (-2 * m * m + 2)
-                * U[m] + (m * m + m) * U[m - 1]))
+    time_step = microtimestep.before.dt
+    point = microtimestep.point
+    a = (array[m + 1] - 2 * array[m] + array[m - 1]) / (
+        2.0 * time_step * time_step
+    )
+    b = (
+        (time_step - 2.0 * point) * array[m + 1]
+        + 4 * point * array[m]
+        + (-time_step - 2.0 * point) * array[m - 1]
+    ) / (2.0 * time_step * time_step)
+    c = (
+        (-time_step * point + point * point) * array[m + 1]
+        + (2.0 * time_step * time_step - 2.0 * point * point) * array[m]
+        + (time_step * point + point * point) * array[m - 1]
+    ) / (2.0 * time_step * time_step)
 
-    return a * t * t + b * t + c
+    return a * time * time + b * time + c
 
-def primal_derivative(U, m, t, space, param):
 
-    a = (U[m + 1] - 2 * U[m] + U[m - 1]) * space.N * space.N \
-        / (2.0 * param.dt * param.dt)
-    b = (-(2 * m - 1) * U[m + 1] + 4 * m * U[m]
-         - (2 * m + 1) * U[m - 1]) * space.N / (2.0 * param.dt)
+def primal_derivative(array, m, time, microtimestep: MicroTimeStep):
 
-    return 2.0 * a * t + b
+    time_step = microtimestep.before.dt
+    point = microtimestep.point
+    a = (array[m + 1] - 2 * array[m] + array[m - 1]) / (
+        2.0 * time_step * time_step
+    )
+    b = (
+        (time_step - 2.0 * point) * array[m + 1]
+        + 4 * point * array[m]
+        + (-time_step - 2.0 * point) * array[m - 1]
+    ) / (2.0 * time_step * time_step)
+
+    return 2.0 * a * time + b
 
 # Define reconstruction of the adjoint problem
-def t_bar(m, space, param):
+def adjoint_reconstruction(array, m, time, microtimestep, macrotimestep):
 
-    return 0.5 * (m * param.dt / space.N + (m - 1) * param.dt / space.N)
+    size = len(array) - 1
+    if m == 1 or m == size:
 
-def adjoint_reconstruction(Z, m, t, space, param):
-
-   if m == 0 or m == param.N * space.N:
-
-       return linear_extrapolation(Z, m, t, space, param)
-
-   else:
-
-       return ((t - t_bar(m - 1, space, param))
-           / (t_bar(m + 1, space, param)
-              - t_bar(m - 1, space, param)) * Z[m + 1]
-           + (t - t_bar(m + 1, space, param))
-           / (t_bar(m - 1, space, param)
-              - t_bar(m + 1, space, param)) * Z[m - 1])
-
-
-# Define coefficients of 2-point Gaussian quadrature
-def gauss(m, space, param):
-
-    return [param.dt / (space.N * 2.0 * sqrt(3)) + t_bar(m, space, param),
-            - param.dt / (space.N * 2.0 * sqrt(3)) + t_bar(m, space, param)]
-
-# Compute goal functionals
-def J_f(U_f, V_f, fluid, param):
-
-    global_result = 0
-    for i in range(param.N * param.M):
-
-        m = i + 1
-        result = 0
-        print(f'Current contribution: {i}')
-        gauss_1, gauss_2 = gauss(m, fluid, param)
-        result += (0.5 * param.dt / param.M
-                   * char_func_J1(param)
-                   * linear_extrapolation(V_f, m, gauss_1, fluid, param)
-                   * fluid.dx)
-        result += (0.5 * param.dt / param.M
-                   * char_func_J1(param)
-                   * linear_extrapolation(V_f, m, gauss_2, fluid, param)
-                   * fluid.dx)
-
-        global_result += assemble(result)
-
-    return global_result
-
-def J_s(U_s, V_s, solid, param):
-
-    global_result = 0
-    for i in range(param.N * param.K):
-
-        m = i + 1
-        result = 0
-        print(f'Current contribution: {i}')
-        gauss_1, gauss_2 = gauss(m, solid, param)
-        result += (0.5 * param.dt / param.K
-                   * char_func_J2(param)
-                   * linear_extrapolation(U_s, m, gauss_1, solid, param)
-                   * solid.dx)
-        result += (0.5 * param.dt / param.K
-                   * char_func_J2(param)
-                   * linear_extrapolation(U_s, m, gauss_2, solid, param)
-                   * solid.dx)
-
-        global_result += assemble(result)
-
-    return global_result
-
-# Compute primal residual of the fluid subproblem
-def B_f(U_f, V_f, U_s, V_s, Z_f, Y_f, fluid, param):
-
-    global_result = 0
-    for i in range(param.N * param.M):
-
-        m = i + 1
-        result = 0
-        print(f'Current contribution: {i}')
-        gauss_1, gauss_2 = gauss(m, fluid, param)
-        result += (0.5 * param.dt / param.M
-                   * ((V_f[m] - V_f[m - 1])
-                      * param.M / param.dt
-                      * (adjoint_reconstruction(Z_f, m, gauss_1,
-                                                fluid, param) - Z_f[m]))
-                   * fluid.dx)
-        result += (0.5 * param.dt / param.M
-                   * ((V_f[m] - V_f[m - 1])
-                      * param.M / param.dt
-                      * (adjoint_reconstruction(Z_f, m, gauss_2,
-                                                fluid, param) - Z_f[m]))
-                   * fluid.dx)
-        result += (0.5 * param.dt / param.M
-                   * a_f(linear_extrapolation(U_f, m, gauss_1, fluid, param),
-                         linear_extrapolation(V_f, m, gauss_1, fluid, param),
-                         adjoint_reconstruction(Z_f, m, gauss_1, fluid, param)
-                         - Z_f[m],
-                         adjoint_reconstruction(Y_f, m, gauss_1, fluid, param)
-                         - Y_f[m], fluid, param))
-        result += (0.5 * param.dt / param.M
-                   * a_f(linear_extrapolation(U_f, m, gauss_2, fluid, param),
-                         linear_extrapolation(V_f, m, gauss_2, fluid, param),
-                         adjoint_reconstruction(Z_f, m, gauss_2, fluid, param)
-                         - Z_f[m],
-                         adjoint_reconstruction(Y_f, m, gauss_2, fluid, param)
-                         - Y_f[m], fluid, param))
-        result -= (0.5 * param.dt / param.M
-                   * param.gamma / fluid.h
-                   * linear_extrapolation(U_s, m, gauss_1, fluid, param)
-                   * (adjoint_reconstruction(Y_f, m, gauss_1,
-                                             fluid, param) - Y_f[m])
-                   * fluid.ds(1))
-        result -= (0.5 * param.dt / param.M
-                   * param.gamma / fluid.h
-                   * linear_extrapolation(U_s, m, gauss_2, fluid, param)
-                   * (adjoint_reconstruction(Y_f, m, gauss_2,
-                                             fluid, param) - Y_f[m])
-                   * fluid.ds(1))
-        result -= (0.5 * param.dt / param.M
-                   * param.gamma / fluid.h
-                   * linear_extrapolation(V_s, m, gauss_1, fluid, param)
-                   * (adjoint_reconstruction(Z_f, m, gauss_1,
-                                             fluid, param) - Z_f[m])
-                   * fluid.ds(1))
-        result -= (0.5 * param.dt / param.M
-                   * param.gamma / fluid.h
-                   * linear_extrapolation(V_s, m, gauss_2, fluid, param)
-                   * (adjoint_reconstruction(Z_f, m, gauss_2,
-                                             fluid, param) - Z_f[m])
-                   * fluid.ds(1))
-
-        global_result += assemble(result)
-
-    return global_result
-
-def F_f(Z_f, Y_f, fluid, param):
-
-    global_result = 0
-    for i in range(param.N * param.M):
-
-        m = i + 1
-        result = 0
-        print(f'Current contribution: {i}')
-        gauss_1, gauss_2 = gauss(m, fluid, param)
-        result += (0.5 * param.dt / param.M
-                   * f(gauss_1)
-                   * (adjoint_reconstruction(Z_f, m, gauss_1,
-                                             fluid, param) - Z_f[m])
-                   * fluid.dx)
-        result += (0.5 * param.dt / param.M
-                   * f(gauss_2)
-                   * (adjoint_reconstruction(Z_f, m, gauss_2,
-                                             fluid, param) - Z_f[m])
-                   * fluid.dx)
-
-        global_result += assemble(result)
-
-    return global_result
-
-# Compute primal residual of the solid subproblem
-def B_s(U_s, V_s, U_f, V_f, Z_s, Y_s, solid, param):
-
-    global_result = 0
-    for i in range(param.N * param.K):
-
-        m = i + 1
-        result = 0
-        print(f'Current contribution: {i}')
-        gauss_1, gauss_2 = gauss(m, solid, param)
-        result += (0.5 * param.dt / param.K
-                   * ((V_s[m] - V_s[m - 1])
-                      * param.K / param.dt
-                      * (adjoint_reconstruction(Z_s, m, gauss_1,
-                                                solid, param) - Z_s[m]))
-                   * solid.dx)
-        result += (0.5 * param.dt / param.K
-                   * ((V_s[m] - V_s[m - 1])
-                      * param.K / param.dt
-                      * (adjoint_reconstruction(Z_s, m, gauss_2,
-                                                solid, param) - Z_s[m]))
-                   * solid.dx)
-        result += (0.5 * param.dt / param.K
-                   * ((U_s[m] - U_s[m - 1])
-                      * param.K / param.dt
-                      * (adjoint_reconstruction(Y_s, m, gauss_1,
-                                                solid, param) - Y_s[m]))
-                   * solid.dx)
-        result += (0.5 * param.dt / param.K
-                   * ((U_s[m] - U_s[m - 1])
-                      * param.K / param.dt
-                      * (adjoint_reconstruction(Y_s, m, gauss_2,
-                                                solid, param) - Y_s[m]))
-                   * solid.dx)
-        result += (0.5 * param.dt / param.K
-                   * a_s(linear_extrapolation(U_s, m, gauss_1, solid, param),
-                         linear_extrapolation(V_s, m, gauss_1, solid, param),
-                         adjoint_reconstruction(Z_s, m, gauss_1, solid, param)
-                         - Z_s[m],
-                         adjoint_reconstruction(Y_s, m, gauss_1, solid, param)
-                         - Y_s[m], solid, param))
-        result += (0.5 * param.dt / param.K
-                   * a_s(linear_extrapolation(U_s, m, gauss_2, solid, param),
-                         linear_extrapolation(V_s, m, gauss_2, solid, param),
-                         adjoint_reconstruction(Z_s, m, gauss_2, solid, param)
-                         - Z_s[m],
-                         adjoint_reconstruction(Y_s, m, gauss_2, solid, param)
-                         - Y_s[m], solid, param))
-        result += (0.5 * param.dt / param.K * param.nu
-                   * dot(grad(linear_extrapolation(V_f, m, gauss_1,
-                                                   solid, param)),
-                         solid.normal)
-                   * (adjoint_reconstruction(Z_s, m, gauss_1,
-                                             solid, param) - Z_s[m])
-                   * solid.ds(1))
-        result += (0.5 * param.dt / param.K * param.nu
-                   * dot(grad(linear_extrapolation(V_f, m, gauss_2,
-                                                   solid, param)),
-                         solid.normal)
-                   * (adjoint_reconstruction(Z_s, m, gauss_2,
-                                             solid, param) - Z_s[m])
-                   * solid.ds(1))
-
-        global_result += assemble(result)
-
-    return global_result
-
-# Compute adjoint residual of the fluid subproblem
-def B_f_adjoint(U_f, V_f, Z_f, Y_f, Z_s, Y_s, fluid, param):
-
-    global_result = 0
-    left = True
-    for i in range(param.N * param.M):
-
-        m = i + 1
-        result = 0
-        print(f'Current contribution: {i}')
-        gauss_1, gauss_2 = gauss(m, fluid, param)
-        if left:
-
-            k = m
-            left = False
-
-        else:
-
-            k = m - 1
-            left = True
-
-        result += (0.5 * param.dt / param.M
-                   * ((primal_derivative(V_f, k, gauss_1, fluid, param)
-                       - (V_f[m] - V_f[m - 1]) * param.M / param.dt)
-                      * Z_f[m]) * fluid.dx)
-        result += (0.5 * param.dt / param.M
-                   * ((primal_derivative(V_f, k, gauss_2, fluid, param)
-                       - (V_f[m] - V_f[m - 1]) * param.M / param.dt)
-                      * Z_f[m]) * fluid.dx)
-        result += (0.5 * param.dt / param.M
-                   * a_f_adjoint(Z_f[m], Y_f[m],
-                                 primal_reconstruction(U_f, k, gauss_1,
-                                                       fluid, param)
-                                 - linear_extrapolation(U_f, m, gauss_1,
-                                                        fluid, param),
-                                 primal_reconstruction(V_f, k, gauss_1,
-                                                       fluid, param)
-                                 - linear_extrapolation(V_f, m, gauss_1,
-                                                        fluid, param),
-                                 fluid, param))
-        result += (0.5 * param.dt / param.M
-                   * a_f_adjoint(Z_f[m], Y_f[m],
-                                 primal_reconstruction(U_f, k, gauss_2,
-                                                       fluid, param)
-                                 - linear_extrapolation(U_f, m, gauss_2,
-                                                        fluid, param),
-                                 primal_reconstruction(V_f, k, gauss_2,
-                                                       fluid, param)
-                                 - linear_extrapolation(V_f, m, gauss_2,
-                                                        fluid, param),
-                                 fluid, param))
-        result -= (0.5 * param.dt / param.M * param.nu
-                   * dot(grad(primal_reconstruction(V_f, k, gauss_1,
-                                                    fluid, param)
-                              - linear_extrapolation(V_f, k, gauss_1,
-                                                     fluid, param)),
-                         fluid.normal) * Z_s[m] * fluid.ds(1))
-        result -= (0.5 * param.dt / param.M * param.nu
-                   * dot(grad(primal_reconstruction(V_f, k, gauss_2,
-                                                    fluid, param)
-                              - linear_extrapolation(V_f, k, gauss_2,
-                                                     fluid, param)),
-                         fluid.normal) * Z_s[m] * fluid.ds(1))
-
-        global_result += assemble(result)
-
-    return global_result
-
-def J_f_adjoint(U_f, V_f, fluid, param):
-
-    global_result = 0
-    left = True
-    for i in range(param.N * param.M):
-
-        m = i + 1
-        result = 0
-        print(f'Current contribution: {i}')
-        gauss_1, gauss_2 = gauss(m, fluid, param)
-        if left:
-
-            k = m
-            left = False
-
-        else:
-
-            k = m - 1
-            left = True
-
-        result += (0.5 * param.dt / param.M
-                   * char_func_J1(param)
-                   * (primal_reconstruction(V_f, k, gauss_1, fluid, param)
-                      - linear_extrapolation(V_f, m, gauss_1, fluid, param))
-                   * fluid.dx)
-        result += (0.5 * param.dt / param.M
-                   * char_func_J1(param)
-                   * (primal_reconstruction(V_f, k, gauss_2, fluid, param)
-                      - linear_extrapolation(V_f, m, gauss_2, fluid, param))
-                   * fluid.dx)
-
-        global_result += assemble(result)
-
-    return global_result
-
-# Compute adjoint residual of the solid subproblem
-def B_s_adjoint(U_s, V_s, Z_s, Y_s, Z_f, Y_f, solid, param):
-
-    global_result = 0
-    left = True
-    for i in range(param.N * param.K):
-
-        m = i + 1
-        result = 0
-        print(f'Current contribution: {i}')
-        gauss_1, gauss_2 = gauss(m, solid, param)
-        if left:
-
-            k = m
-            left = False
-
-        else:
-
-            k = m - 1
-            left = True
-
-        result += (0.5 * param.dt / param.K
-                   * ((primal_derivative(V_s, k, gauss_1, solid, param)
-                       - (V_s[m] - V_s[m - 1]) * param.K / param.dt)
-                      * Z_s[m]) * solid.dx)
-        result += (0.5 * param.dt / param.K
-                   * ((primal_derivative(V_s, k, gauss_2, solid, param)
-                       - (V_s[m] - V_s[m - 1]) * param.K / param.dt)
-                      * Z_s[m]) * solid.dx)
-        result += (0.5 * param.dt / param.K
-                   * ((primal_derivative(U_s, k, gauss_1, solid, param)
-                       - (U_s[m] - U_s[m - 1]) * param.K / param.dt)
-                      * Y_s[m]) * solid.dx)
-        result += (0.5 * param.dt / param.K
-                   * ((primal_derivative(U_s, k, gauss_2, solid, param)
-                       - (U_s[m] - U_s[m - 1]) * param.K / param.dt)
-                      * Y_s[m]) * solid.dx)
-        result += (0.5 * param.dt / param.K
-                   * a_s_adjoint(Z_s[m], Y_s[m],
-                                 primal_reconstruction(U_s, k, gauss_1,
-                                                       solid, param)
-                                 - linear_extrapolation(U_s, m, gauss_1,
-                                                        solid, param),
-                                 primal_reconstruction(V_s, k, gauss_1,
-                                                       solid, param)
-                                 - linear_extrapolation(V_s, m, gauss_1,
-                                                        solid, param),
-                                 solid, param))
-        result += (0.5 * param.dt / param.K
-                   * a_s_adjoint(Z_s[m], Y_s[m],
-                                 primal_reconstruction(U_s, k, gauss_2,
-                                                       solid, param)
-                                 - linear_extrapolation(U_s, m, gauss_2,
-                                                        solid, param),
-                                 primal_reconstruction(V_s, k, gauss_2,
-                                                       solid, param)
-                                 - linear_extrapolation(V_s, m, gauss_2,
-                                                        solid, param),
-                                 solid, param))
-        result -= (0.5 * param.dt / param.K
-                   * param.gamma / solid.h
-                   * (primal_reconstruction(U_s, k, gauss_1, solid, param)
-                      - linear_extrapolation(U_s, m, gauss_1, solid, param))
-                   * Y_f[m] * solid.ds(1))
-        result -= (0.5 * param.dt / param.K
-                   * param.gamma / solid.h
-                   * (primal_reconstruction(U_s, k, gauss_2, solid, param)
-                      - linear_extrapolation(U_s, m, gauss_2, solid, param))
-                   * Y_f[m] * solid.ds(1))
-        result -= (0.5 * param.dt / param.K
-                   * param.gamma / solid.h
-                   * (primal_reconstruction(V_s, k, gauss_1, solid, param)
-                      - linear_extrapolation(V_s, m, gauss_1, solid, param))
-                   * Z_f[m] * solid.ds(1))
-        result -= (0.5 * param.dt / param.K
-                   * param.gamma / solid.h
-                   * (primal_reconstruction(V_s, k, gauss_2, solid, param)
-                      - linear_extrapolation(V_s, m, gauss_2, solid, param))
-                   * Z_f[m] * solid.ds(1))
-
-        global_result += assemble(result)
-
-    return global_result
-
-def J_s_adjoint(U_s, V_s, solid, param):
-
-    global_result = 0
-    left = True
-    for i in range(param.N * param.K):
-
-        m = i + 1
-        result = 0
-        print(f'Current contribution: {i}')
-        gauss_1, gauss_2 = gauss(m, solid, param)
-        if left:
-
-            k = m
-            left = False
-
-        else:
-
-            k = m - 1
-            left = True
-
-        result += (0.5 * param.dt / param.K
-                   * char_func_J2(param)
-                   * (primal_reconstruction(U_s, k, gauss_1, solid, param)
-                      - linear_extrapolation(U_s, m, gauss_1, solid, param))
-                   * solid.dx)
-        result += (0.5 * param.dt / param.K
-                   * char_func_J2(param)
-                   * (primal_reconstruction(U_s, k, gauss_2, solid, param)
-                      - linear_extrapolation(U_s, m, gauss_2, solid, param))
-                   * solid.dx)
-
-        global_result += assemble(result)
-
-    return global_result
-
-def compute_residuals(u_f, v_f, u_s, v_s, z_f, y_f,
-                      z_s, y_s, fluid, solid, param):
-
-    # Load solutions of the fluid subproblem problem
-    for i in range(param.M * param.N + 1):
-
-        u_f.load(i)
-        v_f.load(i)
-        z_f.load(i)
-        y_f.load(i)
-
-    # Load solutions of the solid subproblem problem
-    for i in range(param.K * param.N + 1):
-
-        u_s.load(i)
-        v_s.load(i)
-        z_s.load(i)
-        y_s.load(i)
-
-    # Create text file
-    residuals_txt = open('residuals.txt', 'a')
-
-    # Prepare arrays of solutions
-    U_f_f = copy_array_right(u_f.array, fluid, param)
-    U_f_s = extrapolate_array_right(u_f.array, solid, fluid,
-                                    param, fluid_to_solid, 0)
-    V_f_f = copy_array_right(v_f.array, fluid, param)
-    V_f_s = extrapolate_array_right(v_f.array, solid, fluid,
-                                    param, fluid_to_solid, 1)
-    U_s_s = copy_array_right(u_s.array, solid, param)
-    U_s_f = extrapolate_array_right(u_s.array, fluid, solid,
-                                    param, solid_to_fluid, 0)
-    V_s_s = copy_array_right(v_s.array, solid, param)
-    V_s_f = extrapolate_array_right(v_s.array, fluid, solid,
-                                    param, solid_to_fluid, 1)
-    Z_f_f = copy_array_left(z_f.array, fluid, param)
-    Z_f_s = extrapolate_array_left(z_f.array, solid, fluid,
-                                   param, fluid_to_solid, 0)
-    Y_f_f = copy_array_left(y_f.array, fluid, param)
-    Y_f_s = extrapolate_array_left(y_f.array, solid, fluid,
-                                   param, fluid_to_solid, 1)
-    Z_s_s = copy_array_left(z_s.array, solid, param)
-    Z_s_f = extrapolate_array_left(z_s.array, fluid, solid,
-                                   param, solid_to_fluid, 0)
-    Y_s_s = copy_array_left(y_s.array, solid, param)
-    Y_s_f = extrapolate_array_left(y_s.array, fluid, solid,
-                                   param, solid_to_fluid, 1)
-
-    # Compute residuals
-    primal_fluid_lhs = F_f(Z_f_f, Y_f_f, fluid, param)
-    primal_fluid_rhs = B_f(U_f_f, V_f_f, U_s_f, V_s_f, Z_f_f, Y_f_f, fluid, param)
-    primal_residual_fluid = (0.5 * primal_fluid_lhs
-                             - 0.5 * primal_fluid_rhs)
-    print(f'Primal residual for the fluid subproblem: '
-          f'{primal_residual_fluid}')
-    residuals_txt.write(f'Primal residual for the fluid subproblem: '
-                        f'{primal_residual_fluid} \r\n')
-    primal_residual_solid = - 0.5 * B_s(U_s_s, V_s_s, U_f_s, V_f_s,
-                                        Z_s_s, Y_s_s, solid, param)
-    print(f'Primal residual for the solid subproblem: '
-          f'{primal_residual_solid}')
-    residuals_txt.write(f'Primal residual for the solid subproblem: '
-                        f'{primal_residual_solid} \r\n')
-    adjoint_fluid_lhs = J_f_adjoint(U_f_f, V_f_f, fluid, param)
-    adjoint_fluid_rhs = B_f_adjoint(U_f_f, V_f_f, Z_f_f, Y_f_f, Z_s_f, Y_s_f, fluid, param)
-    adjoint_residual_fluid = (0.5 * adjoint_fluid_lhs
-                              - 0.5 * adjoint_fluid_rhs)
-    print(f'Adjoint residual for the fluid subproblem: '
-          f'{adjoint_residual_fluid}')
-    residuals_txt.write(f'Adjoint residual for the fluid subproblem: '
-                        f'{adjoint_residual_fluid} \r\n')
-    adjoint_solid_lhs = J_s_adjoint(U_s_s, V_s_s, solid, param)
-    adjoint_solid_rhs = B_s_adjoint(U_s_s, V_s_s, Z_s_s, Y_s_s, Z_f_s, Y_f_s, solid, param)
-    adjoint_residual_solid = (0.5 * adjoint_solid_lhs
-                              - 0.5 * adjoint_solid_rhs)
-    print(f'Adjoint residual for the solid subproblem: '
-          f'{adjoint_residual_solid}')
-    residuals_txt.write(f'Adjoint residual for the solid subproblem: '
-                        f'{adjoint_residual_solid} \r\n')
-
-    # Compute goal functional
-    if param.J1:
-
-        goal_functional = J_f(U_f_f, V_f_f, fluid, param)
+        #return linear_extrapolation(array, m, time, microtimestep)
+        return linear_extrapolation(array, m, time, microtimestep) * 0.0
 
     else:
 
-        goal_functional = J_s(U_s_s, V_s_s, solid, param)
+        if microtimestep.before.before is None:
 
-    print(f'Value of goal functional: {goal_functional}')
-    residuals_txt.write(f'Value of goal functional: {goal_functional} \r\n')
+            t_average_before = 0.5 * (
+                microtimestep.before.point
+                + macrotimestep.microtimestep_before.point
+            )
 
-    residuals_txt.close()
+        else:
 
-    return [primal_residual_fluid,
-            primal_residual_solid,
-            adjoint_residual_fluid,
-            adjoint_residual_solid,
-            goal_functional]
+            t_average_before = 0.5 * (
+                microtimestep.before.point + microtimestep.before.before.point
+            )
+
+        if microtimestep.after is None:
+
+            t_average_after = 0.5 * (
+                microtimestep.point + macrotimestep.microtimestep_after.point
+            )
+
+        else:
+
+            t_average_after = 0.5 * (
+                microtimestep.point + microtimestep.after.point
+            )
+
+        return (
+            (time - t_average_before)
+            / (t_average_after - t_average_before)
+            * array[m + 1]
+            + (time - t_average_after)
+            / (t_average_before - t_average_after)
+            * array[m - 1]
+        )
+
+# Compute goal functionals
+def goal_functional_fluid(
+    displacement_fluid_array,
+    velocity_fluid_array,
+    fluid: Space,
+    fluid_timeline: TimeLine,
+    param: Parameters,
+):
+
+    global_result = 0.0
+    macrotimestep = fluid_timeline.head
+    global_size = fluid_timeline.size
+    m = 1
+    for n in range(global_size):
+
+        microtimestep = macrotimestep.head.after
+        local_size = macrotimestep.size - 1
+        for k in range(local_size):
+
+            print(f"Current contribution: {m}")
+            result = 0.0
+            time_step = microtimestep.before.dt
+            gauss_1, gauss_2 = gauss(microtimestep)
+            result += (
+                0.5
+                * time_step
+                * param.NU
+                * characteristic_function_fluid(param)
+                * dot(
+                    grad(
+                        linear_extrapolation(
+                            velocity_fluid_array, m, gauss_1, microtimestep
+                        )
+                    ),
+                    grad(
+                        linear_extrapolation(
+                            velocity_fluid_array, m, gauss_1, microtimestep
+                        )
+                    ),
+                )
+                * fluid.dx
+            )
+            result += (
+                0.5
+                * time_step
+                * param.NU
+                * characteristic_function_fluid(param)
+                * dot(
+                    grad(
+                        linear_extrapolation(
+                            velocity_fluid_array, m, gauss_2, microtimestep
+                        )
+                    ),
+                    grad(
+                        linear_extrapolation(
+                            velocity_fluid_array, m, gauss_2, microtimestep
+                        )
+                    ),
+                )
+                * fluid.dx
+            )
+
+            m += 1
+            microtimestep = microtimestep.after
+            global_result += assemble(result)
+
+        macrotimestep = macrotimestep.after
+
+    return global_result
+
+
+def goal_functional_solid(
+    displacement_solid_array,
+    velocity_solid_array,
+    solid,
+    solid_timeline,
+    param,
+):
+
+    global_result = 0.0
+    macrotimestep = solid_timeline.head
+    global_size = solid_timeline.size
+    m = 1
+    for n in range(global_size):
+
+        microtimestep = macrotimestep.head.after
+        local_size = macrotimestep.size - 1
+        for k in range(local_size):
+
+            print(f"Current contribution: {m}")
+            result = 0.0
+            time_step = microtimestep.before.dt
+            gauss_1, gauss_2 = gauss(microtimestep)
+            result += (
+                0.5
+                * time_step
+                * param.ZETA
+                * characteristic_function_solid(param)
+                * dot(
+                    grad(
+                        linear_extrapolation(
+                            displacement_solid_array, m, gauss_1, microtimestep
+                        )
+                    ),
+                    grad(
+                        linear_extrapolation(
+                            displacement_solid_array, m, gauss_1, microtimestep
+                        )
+                    ),
+                )
+                * solid.dx
+            )
+            result += (
+                0.5
+                * time_step
+                * param.ZETA
+                * characteristic_function_solid(param)
+                * dot(
+                    grad(
+                        linear_extrapolation(
+                            displacement_solid_array, m, gauss_2, microtimestep
+                        )
+                    ),
+                    grad(
+                        linear_extrapolation(
+                            displacement_solid_array, m, gauss_2, microtimestep
+                        )
+                    ),
+                )
+                * solid.dx
+            )
+
+            m += 1
+            microtimestep = microtimestep.after
+            global_result += assemble(result)
+
+        macrotimestep = macrotimestep.after
+
+    return global_result
+
+
+# Compute primal residual of the fluid subproblem
+def primal_residual_fluid(
+    displacement_fluid_array,
+    velocity_fluid_array,
+    displacement_solid_array,
+    velocity_solid_array,
+    velocity_fluid_adjoint_array,
+    displacement_fluid_adjoint_array,
+    fluid: Space,
+    fluid_timeline: TimeLine,
+    param: Parameters,
+):
+
+    residuals = []
+    macrotimestep = fluid_timeline.head
+    global_size = fluid_timeline.size
+    m = 1
+    for n in range(global_size):
+
+        microtimestep = macrotimestep.head.after
+        local_size = macrotimestep.size - 1
+        for k in range(local_size):
+
+            print(f"Current contribution: {m}")
+            lhs = 0.0
+            rhs = 0.0
+            time_step = microtimestep.before.dt
+            gauss_1, gauss_2 = gauss(microtimestep)
+            lhs += (
+                0.5
+                * time_step
+                * (
+                    (velocity_fluid_array[m] - velocity_fluid_array[m - 1])
+                    / time_step
+                    * (
+                        adjoint_reconstruction(
+                            velocity_fluid_adjoint_array,
+                            m,
+                            gauss_1,
+                            microtimestep,
+                            macrotimestep,
+                        )
+                        - velocity_fluid_adjoint_array[m]
+                    )
+                )
+                * fluid.dx
+            )
+            lhs += (
+                0.5
+                * time_step
+                * (
+                    (velocity_fluid_array[m] - velocity_fluid_array[m - 1])
+                    / time_step
+                    * (
+                        adjoint_reconstruction(
+                            velocity_fluid_adjoint_array,
+                            m,
+                            gauss_2,
+                            microtimestep,
+                            macrotimestep,
+                        )
+                        - velocity_fluid_adjoint_array[m]
+                    )
+                )
+                * fluid.dx
+            )
+            lhs += (
+                0.5
+                * time_step
+                * form_fluid(
+                    linear_extrapolation(
+                        displacement_fluid_array, m, gauss_1, microtimestep
+                    ),
+                    linear_extrapolation(
+                        velocity_fluid_array, m, gauss_1, microtimestep
+                    ),
+                    adjoint_reconstruction(
+                        velocity_fluid_adjoint_array,
+                        m,
+                        gauss_1,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - velocity_fluid_adjoint_array[m],
+                    adjoint_reconstruction(
+                        displacement_fluid_adjoint_array,
+                        m,
+                        gauss_1,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - displacement_fluid_adjoint_array[m],
+                    fluid,
+                    param,
+                )
+            )
+            lhs += (
+                0.5
+                * time_step
+                * form_fluid(
+                    linear_extrapolation(
+                        displacement_fluid_array, m, gauss_2, microtimestep
+                    ),
+                    linear_extrapolation(
+                        velocity_fluid_array, m, gauss_2, microtimestep
+                    ),
+                    adjoint_reconstruction(
+                        velocity_fluid_adjoint_array,
+                        m,
+                        gauss_2,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - velocity_fluid_adjoint_array[m],
+                    adjoint_reconstruction(
+                        displacement_fluid_adjoint_array,
+                        m,
+                        gauss_2,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - displacement_fluid_adjoint_array[m],
+                    fluid,
+                    param,
+                )
+            )
+            lhs -= (
+                0.5
+                * time_step
+                * param.GAMMA
+                / fluid.cell_size
+                * linear_extrapolation(
+                    displacement_solid_array, m, gauss_1, microtimestep
+                )
+                * (
+                    adjoint_reconstruction(
+                        displacement_fluid_adjoint_array,
+                        m,
+                        gauss_1,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - displacement_fluid_adjoint_array[m]
+                )
+                * fluid.ds(1)
+            )
+            lhs -= (
+                0.5
+                * time_step
+                * param.GAMMA
+                / fluid.cell_size
+                * linear_extrapolation(
+                    displacement_solid_array, m, gauss_2, microtimestep
+                )
+                * (
+                    adjoint_reconstruction(
+                        displacement_fluid_adjoint_array,
+                        m,
+                        gauss_2,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - displacement_fluid_adjoint_array[m]
+                )
+                * fluid.ds(1)
+            )
+            lhs -= (
+                0.5
+                * time_step
+                * param.GAMMA
+                / fluid.cell_size
+                * linear_extrapolation(
+                    velocity_solid_array, m, gauss_1, microtimestep
+                )
+                * (
+                    adjoint_reconstruction(
+                        velocity_fluid_adjoint_array,
+                        m,
+                        gauss_1,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - velocity_fluid_adjoint_array[m]
+                )
+                * fluid.ds(1)
+            )
+            lhs -= (
+                0.5
+                * time_step
+                * param.GAMMA
+                / fluid.cell_size
+                * linear_extrapolation(
+                    velocity_solid_array, m, gauss_2, microtimestep
+                )
+                * (
+                    adjoint_reconstruction(
+                        velocity_fluid_adjoint_array,
+                        m,
+                        gauss_2,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - velocity_fluid_adjoint_array[m]
+                )
+                * fluid.ds(1)
+            )
+            rhs += (
+                0.5
+                * time_step
+                * external_force(gauss_1)
+                * (
+                    adjoint_reconstruction(
+                        velocity_fluid_adjoint_array,
+                        m,
+                        gauss_1,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - velocity_fluid_adjoint_array[m]
+                )
+                * fluid.dx
+            )
+            rhs += (
+                0.5
+                * time_step
+                * external_force(gauss_2)
+                * (
+                    adjoint_reconstruction(
+                        velocity_fluid_adjoint_array,
+                        m,
+                        gauss_2,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - velocity_fluid_adjoint_array[m]
+                )
+                * fluid.dx
+            )
+
+            m += 1
+            microtimestep = microtimestep.after
+            residuals.append(assemble(0.5 * rhs - 0.5 * lhs))
+
+        macrotimestep = macrotimestep.after
+
+    return residuals
+
+
+# Compute primal residual of the solid subproblem
+def primal_residual_solid(
+    displacement_solid_array,
+    velocity_solid_array,
+    displacement_fluid_array,
+    velocity_fluid_array,
+    displacement_solid_adjoint_array,
+    velocity_solid_adjoint_array,
+    solid: Space,
+    solid_timeline: TimeLine,
+    param: Parameters,
+):
+
+    residuals = []
+    macrotimestep = solid_timeline.head
+    global_size = solid_timeline.size
+    m = 1
+    for n in range(global_size):
+
+        microtimestep = macrotimestep.head.after
+        local_size = macrotimestep.size - 1
+        for k in range(local_size):
+
+            print(f"Current contribution: {m}")
+            lhs = 0.0
+            rhs = 0.0
+            time_step = microtimestep.before.dt
+            gauss_1, gauss_2 = gauss(microtimestep)
+            lhs += (
+                0.5
+                * time_step
+                * (
+                    (velocity_solid_array[m] - velocity_solid_array[m - 1])
+                    / time_step
+                    * (
+                        adjoint_reconstruction(
+                            displacement_solid_adjoint_array,
+                            m,
+                            gauss_1,
+                            microtimestep,
+                            macrotimestep,
+                        )
+                        - displacement_solid_adjoint_array[m]
+                    )
+                )
+                * solid.dx
+            )
+            lhs += (
+                0.5
+                * time_step
+                * (
+                    (velocity_solid_array[m] - velocity_solid_array[m - 1])
+                    / time_step
+                    * (
+                        adjoint_reconstruction(
+                            displacement_solid_adjoint_array,
+                            m,
+                            gauss_2,
+                            microtimestep,
+                            macrotimestep,
+                        )
+                        - displacement_solid_adjoint_array[m]
+                    )
+                )
+                * solid.dx
+            )
+            lhs += (
+                0.5
+                * time_step
+                * (
+                    (
+                        displacement_solid_array[m]
+                        - displacement_solid_array[m - 1]
+                    )
+                    / time_step
+                    * (
+                        adjoint_reconstruction(
+                            velocity_solid_adjoint_array,
+                            m,
+                            gauss_1,
+                            microtimestep,
+                            macrotimestep,
+                        )
+                        - velocity_solid_adjoint_array[m]
+                    )
+                )
+                * solid.dx
+            )
+            lhs += (
+                0.5
+                * time_step
+                * (
+                    (
+                        displacement_solid_array[m]
+                        - displacement_solid_array[m - 1]
+                    )
+                    / time_step
+                    * (
+                        adjoint_reconstruction(
+                            velocity_solid_adjoint_array,
+                            m,
+                            gauss_2,
+                            microtimestep,
+                            macrotimestep,
+                        )
+                        - velocity_solid_adjoint_array[m]
+                    )
+                )
+                * solid.dx
+            )
+            lhs += (
+                0.5
+                * time_step
+                * form_solid(
+                    linear_extrapolation(
+                        displacement_solid_array, m, gauss_1, microtimestep
+                    ),
+                    linear_extrapolation(
+                        velocity_solid_array, m, gauss_1, microtimestep
+                    ),
+                    adjoint_reconstruction(
+                        displacement_solid_adjoint_array,
+                        m,
+                        gauss_1,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - displacement_solid_adjoint_array[m],
+                    adjoint_reconstruction(
+                        velocity_solid_adjoint_array,
+                        m,
+                        gauss_1,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - velocity_solid_adjoint_array[m],
+                    solid,
+                    param,
+                )
+            )
+            lhs += (
+                0.5
+                * time_step
+                * form_solid(
+                    linear_extrapolation(
+                        displacement_solid_array, m, gauss_2, microtimestep
+                    ),
+                    linear_extrapolation(
+                        velocity_solid_array, m, gauss_2, microtimestep
+                    ),
+                    adjoint_reconstruction(
+                        displacement_solid_adjoint_array,
+                        m,
+                        gauss_2,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - displacement_solid_adjoint_array[m],
+                    adjoint_reconstruction(
+                        velocity_solid_adjoint_array,
+                        m,
+                        gauss_2,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - velocity_solid_adjoint_array[m],
+                    solid,
+                    param,
+                )
+            )
+            lhs += (
+                0.5
+                * time_step
+                * param.NU
+                * dot(
+                    grad(
+                        linear_extrapolation(
+                            velocity_fluid_array, m, gauss_1, microtimestep
+                        )
+                    ),
+                    solid.normal_vector,
+                )
+                * (
+                    adjoint_reconstruction(
+                        displacement_solid_adjoint_array,
+                        m,
+                        gauss_1,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - displacement_solid_adjoint_array[m]
+                )
+                * solid.ds(1)
+            )
+            lhs += (
+                0.5
+                * time_step
+                * param.NU
+                * dot(
+                    grad(
+                        linear_extrapolation(
+                            velocity_fluid_array, m, gauss_2, microtimestep
+                        )
+                    ),
+                    solid.normal_vector,
+                )
+                * (
+                    adjoint_reconstruction(
+                        displacement_solid_adjoint_array,
+                        m,
+                        gauss_2,
+                        microtimestep,
+                        macrotimestep,
+                    )
+                    - displacement_solid_adjoint_array[m]
+                )
+                * solid.ds(1)
+            )
+
+            m += 1
+            microtimestep = microtimestep.after
+            residuals.append(assemble(0.5 * rhs - 0.5 * lhs))
+
+        macrotimestep = macrotimestep.after
+
+    return residuals
+
+
+# Compute adjoint residual of the fluid subproblem
+def adjoint_residual_fluid(
+    displacement_fluid_array,
+    velocity_fluid_array,
+    displacement_fluid_adjoint,
+    velocity_fluid_adjoint,
+    displacement_solid_adjoint,
+    velocity_solid_adjoint,
+    fluid: Space,
+    fluid_timeline: TimeLine,
+    param: Parameters,
+):
+    residuals = []
+    left = True
+    macrotimestep = fluid_timeline.head
+    global_size = fluid_timeline.size
+    m = 1
+    for n in range(global_size):
+
+        microtimestep = macrotimestep.head.after
+        local_size = macrotimestep.size - 1
+        for k in range(local_size):
+
+            print(f"Current contribution: {m}")
+            lhs = 0.0
+            rhs = 0.0
+            time_step = microtimestep.before.dt
+            gauss_1, gauss_2 = gauss(microtimestep)
+            if left:
+
+                l = m
+                microtimestep_adjust = microtimestep
+                left = False
+
+            else:
+
+                l = m - 1
+                if microtimestep.before.before is None:
+
+                    microtimestep_adjust = (
+                        macrotimestep.microtimestep_before.after
+                    )
+
+                else:
+
+                    microtimestep_adjust = microtimestep.before
+                left = True
+
+            lhs += (
+                0.5
+                * time_step
+                * (
+                    (
+                        primal_derivative(
+                            velocity_fluid_array,
+                            l,
+                            gauss_1,
+                            microtimestep_adjust,
+                        )
+                        - (
+                            velocity_fluid_array[m]
+                            - velocity_fluid_array[m - 1]
+                        )
+                        / time_step
+                    )
+                    * displacement_fluid_adjoint[m]
+                )
+                * fluid.dx
+            )
+            lhs += (
+                0.5
+                * time_step
+                * (
+                    (
+                        primal_derivative(
+                            velocity_fluid_array,
+                            l,
+                            gauss_2,
+                            microtimestep_adjust,
+                        )
+                        - (
+                            velocity_fluid_array[m]
+                            - velocity_fluid_array[m - 1]
+                        )
+                        / time_step
+                    )
+                    * displacement_fluid_adjoint[m]
+                )
+                * fluid.dx
+            )
+            lhs += (
+                0.5
+                * time_step
+                * form_fluid_adjoint(
+                    displacement_fluid_adjoint[m],
+                    velocity_fluid_adjoint[m],
+                    primal_reconstruction(
+                        displacement_fluid_array,
+                        l,
+                        gauss_1,
+                        microtimestep_adjust,
+                    )
+                    - linear_extrapolation(
+                        displacement_fluid_array, m, gauss_1, microtimestep
+                    ),
+                    primal_reconstruction(
+                        velocity_fluid_array, l, gauss_1, microtimestep_adjust
+                    )
+                    - linear_extrapolation(
+                        velocity_fluid_array, m, gauss_1, microtimestep
+                    ),
+                    fluid,
+                    param,
+                )
+            )
+            lhs += (
+                0.5
+                * time_step
+                * form_fluid_adjoint(
+                    displacement_fluid_adjoint[m],
+                    velocity_fluid_adjoint[m],
+                    primal_reconstruction(
+                        displacement_fluid_array,
+                        l,
+                        gauss_2,
+                        microtimestep_adjust,
+                    )
+                    - linear_extrapolation(
+                        displacement_fluid_array, m, gauss_2, microtimestep
+                    ),
+                    primal_reconstruction(
+                        velocity_fluid_array, l, gauss_2, microtimestep_adjust
+                    )
+                    - linear_extrapolation(
+                        velocity_fluid_array, m, gauss_2, microtimestep
+                    ),
+                    fluid,
+                    param,
+                )
+            )
+            lhs -= (
+                0.5
+                * time_step
+                * param.NU
+                * dot(
+                    grad(
+                        primal_reconstruction(
+                            velocity_fluid_array,
+                            l,
+                            gauss_1,
+                            microtimestep_adjust,
+                        )
+                        - linear_extrapolation(
+                            velocity_fluid_array, m, gauss_1, microtimestep
+                        )
+                    ),
+                    fluid.normal_vector,
+                )
+                * displacement_solid_adjoint[m]
+                * fluid.ds(1)
+            )
+            lhs -= (
+                0.5
+                * time_step
+                * param.NU
+                * dot(
+                    grad(
+                        primal_reconstruction(
+                            velocity_fluid_array,
+                            l,
+                            gauss_2,
+                            microtimestep_adjust,
+                        )
+                        - linear_extrapolation(
+                            velocity_fluid_array, m, gauss_2, microtimestep
+                        )
+                    ),
+                    fluid.normal_vector,
+                )
+                * displacement_solid_adjoint[m]
+                * fluid.ds(1)
+            )
+            rhs += (
+                0.5
+                * time_step
+                * 2.0 * param.NU
+                * characteristic_function_fluid(param)
+                * dot(
+                    grad(
+                        linear_extrapolation(
+                            velocity_fluid_array, m, gauss_1, microtimestep
+                        )
+                    ),
+                    grad(
+                        primal_reconstruction(
+                            velocity_fluid_array,
+                            l,
+                            gauss_1,
+                            microtimestep_adjust,
+                        )
+                        - linear_extrapolation(
+                            velocity_fluid_array, m, gauss_1, microtimestep
+                        )
+                    ),
+                )
+                * fluid.dx
+            )
+            rhs += (
+                0.5
+                * time_step
+                * 2.0 * param.NU
+                * characteristic_function_fluid(param)
+                * dot(
+                    grad(
+                        linear_extrapolation(
+                            velocity_fluid_array, m, gauss_2, microtimestep
+                        )
+                    ),
+                    grad(
+                        primal_reconstruction(
+                            velocity_fluid_array,
+                            l,
+                            gauss_2,
+                            microtimestep_adjust,
+                        )
+                        - linear_extrapolation(
+                            velocity_fluid_array, m, gauss_2, microtimestep
+                        )
+                    ),
+                )
+                * fluid.dx
+            )
+
+            m += 1
+            microtimestep = microtimestep.after
+            residuals.append(assemble(0.5 * rhs - 0.5 * lhs))
+
+        macrotimestep = macrotimestep.after
+
+    return residuals
+
+
+# Compute adjoint residual of the solid subproblem
+def adjoint_residual_solid(
+    displacement_solid,
+    velocity_solid,
+    displacement_solid_adjoint,
+    velocity_solid_adjoint,
+    displacement_fluid_adjoint,
+    velocity_fluid_adjoint,
+    solid: Space,
+    solid_timeline: TimeLine,
+    param: Parameters,
+):
+    residuals = []
+    left = True
+    macrotimestep = solid_timeline.head
+    glocal_size = solid_timeline.size
+    m = 1
+    for n in range(glocal_size):
+
+        microtimestep = macrotimestep.head.after
+        local_size = macrotimestep.size - 1
+        for k in range(local_size):
+
+            print(f"Current contribution: {m}")
+            lhs = 0.0
+            rhs = 0.0
+            time_step = microtimestep.before.dt
+            gauss_1, gauss_2 = gauss(microtimestep)
+            if left:
+
+                l = m
+                microtimestep_adjust = microtimestep
+                left = False
+
+            else:
+
+                l = m - 1
+                if microtimestep.before.before is None:
+
+                    microtimestep_adjust = (
+                        macrotimestep.microtimestep_before.after
+                    )
+
+                else:
+
+                    microtimestep_adjust = microtimestep.before
+                left = True
+
+            lhs += (
+                0.5
+                * time_step
+                * (
+                    (
+                        primal_derivative(
+                            velocity_solid, l, gauss_1, microtimestep_adjust
+                        )
+                        - (velocity_solid[m] - velocity_solid[m - 1])
+                        / time_step
+                    )
+                    * displacement_solid_adjoint[m]
+                )
+                * solid.dx
+            )
+            lhs += (
+                0.5
+                * time_step
+                * (
+                    (
+                        primal_derivative(
+                            velocity_solid, l, gauss_2, microtimestep_adjust
+                        )
+                        - (velocity_solid[m] - velocity_solid[m - 1])
+                        / time_step
+                    )
+                    * displacement_solid_adjoint[m]
+                )
+                * solid.dx
+            )
+            lhs += (
+                0.5
+                * time_step
+                * (
+                    (
+                        primal_derivative(
+                            displacement_solid,
+                            l,
+                            gauss_1,
+                            microtimestep_adjust,
+                        )
+                        - (displacement_solid[m] - displacement_solid[m - 1])
+                        / time_step
+                    )
+                    * velocity_solid_adjoint[m]
+                )
+                * solid.dx
+            )
+            lhs += (
+                0.5
+                * time_step
+                * (
+                    (
+                        primal_derivative(
+                            displacement_solid,
+                            l,
+                            gauss_2,
+                            microtimestep_adjust,
+                        )
+                        - (displacement_solid[m] - displacement_solid[m - 1])
+                        / time_step
+                    )
+                    * velocity_solid_adjoint[m]
+                )
+                * solid.dx
+            )
+            lhs += (
+                0.5
+                * time_step
+                * form_solid_adjoint(
+                    displacement_solid_adjoint[m],
+                    velocity_solid_adjoint[m],
+                    primal_reconstruction(
+                        displacement_solid, l, gauss_1, microtimestep_adjust
+                    )
+                    - linear_extrapolation(
+                        displacement_solid, m, gauss_1, microtimestep
+                    ),
+                    primal_reconstruction(
+                        velocity_solid, l, gauss_1, microtimestep_adjust
+                    )
+                    - linear_extrapolation(
+                        velocity_solid, m, gauss_1, microtimestep
+                    ),
+                    solid,
+                    param,
+                )
+            )
+            lhs += (
+                0.5
+                * time_step
+                * form_solid_adjoint(
+                    displacement_solid_adjoint[m],
+                    velocity_solid_adjoint[m],
+                    primal_reconstruction(
+                        displacement_solid, l, gauss_2, microtimestep_adjust
+                    )
+                    - linear_extrapolation(
+                        displacement_solid, m, gauss_2, microtimestep
+                    ),
+                    primal_reconstruction(
+                        velocity_solid, l, gauss_2, microtimestep_adjust
+                    )
+                    - linear_extrapolation(
+                        velocity_solid, m, gauss_2, microtimestep
+                    ),
+                    solid,
+                    param,
+                )
+            )
+            lhs -= (
+                0.5
+                * time_step
+                * param.GAMMA
+                / solid.cell_size
+                * (
+                    primal_reconstruction(
+                        displacement_solid, l, gauss_1, microtimestep_adjust
+                    )
+                    - linear_extrapolation(
+                        displacement_solid, m, gauss_1, microtimestep
+                    )
+                )
+                * velocity_fluid_adjoint[m]
+                * solid.ds(1)
+            )
+            lhs -= (
+                0.5
+                * time_step
+                * param.GAMMA
+                / solid.cell_size
+                * (
+                    primal_reconstruction(
+                        displacement_solid, l, gauss_2, microtimestep_adjust
+                    )
+                    - linear_extrapolation(
+                        displacement_solid, m, gauss_2, microtimestep
+                    )
+                )
+                * velocity_fluid_adjoint[m]
+                * solid.ds(1)
+            )
+            lhs -= (
+                0.5
+                * time_step
+                * param.GAMMA
+                / solid.cell_size
+                * (
+                    primal_reconstruction(
+                        velocity_solid, l, gauss_1, microtimestep_adjust
+                    )
+                    - linear_extrapolation(
+                        velocity_solid, m, gauss_1, microtimestep
+                    )
+                )
+                * displacement_fluid_adjoint[m]
+                * solid.ds(1)
+            )
+            lhs -= (
+                0.5
+                * time_step
+                * param.GAMMA
+                / solid.cell_size
+                * (
+                    primal_reconstruction(
+                        velocity_solid, l, gauss_2, microtimestep_adjust
+                    )
+                    - linear_extrapolation(
+                        velocity_solid, m, gauss_2, microtimestep
+                    )
+                )
+                * displacement_fluid_adjoint[m]
+                * solid.ds(1)
+            )
+            rhs += (
+                0.5
+                * time_step
+                * 2.0 * param.ZETA
+                * characteristic_function_solid(param)
+                * dot(
+                    grad(
+                        linear_extrapolation(
+                            displacement_solid, m, gauss_1, microtimestep
+                        )
+                    ),
+                    grad(
+                        primal_reconstruction(
+                            displacement_solid,
+                            l,
+                            gauss_1,
+                            microtimestep_adjust,
+                        )
+                        - linear_extrapolation(
+                            displacement_solid, m, gauss_1, microtimestep
+                        )
+                    ),
+                )
+                * solid.dx
+            )
+            rhs += (
+                0.5
+                * time_step
+                * 2.0 * param.ZETA
+                * characteristic_function_solid(param)
+                * dot(
+                    grad(
+                        linear_extrapolation(
+                            displacement_solid, m, gauss_2, microtimestep
+                        )
+                    ),
+                    grad(
+                        primal_reconstruction(
+                            displacement_solid,
+                            l,
+                            gauss_2,
+                            microtimestep_adjust,
+                        )
+                        - linear_extrapolation(
+                            displacement_solid, m, gauss_2, microtimestep
+                        )
+                    ),
+                )
+                * solid.dx
+            )
+
+            m += 1
+            microtimestep = microtimestep.after
+            residuals.append(assemble(0.5 * rhs - 0.5 * lhs))
+
+        macrotimestep = macrotimestep.after
+
+    return residuals

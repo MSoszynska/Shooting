@@ -1,102 +1,237 @@
-Wątki
-Używasz 3,85 GB (25%) z 15 GB
-Zarządzaj
-Warunki · Prywatność · Zasady programu
-Ostatnia aktywność konta: 0 minut temu
-Obecnie używane z 1 innej lokalizacji · Szczegóły
-
-from fenics import (Function, FunctionSpace, project,
-                    DirichletBC, Constant, TrialFunction, split,
-                    TestFunction, solve)
-from spaces import boundary
+from fenics import (
+    Function,
+    FunctionSpace,
+    project,
+    DirichletBC,
+    Constant,
+    TrialFunction,
+    split,
+    TestFunction,
+    solve,
+)
+from spaces import Space, boundary
+from parameters import Parameters
+from time_structure import MacroTimeStep
+from initial import Initial
 
 # Define a function solving a problem on a subdomain
-def solve_problem(u, v, u_interface, v_interface,
-                  space, space_interface, transfer_function,
-                  L_0, A, L, first_time_step,
-                  param, t, save = False):
+def solve_problem(
+    displacement: Initial,
+    velocity: Initial,
+    given_displacement: Initial,
+    given_velocity: Initial,
+    space: Space,
+    space_interface: Space,
+    transfer_function,
+    functional_initial,
+    bilinear_form,
+    functional,
+    first_time_step,
+    param: Parameters,
+    macrotimestep: MacroTimeStep,
+    adjoint,
+    save=False,
+):
 
     # Store old solutions
-    u_n = Function(space.V_split[0])
-    v_n = Function(space.V_split[1])
-    u_n.assign(u.old)
-    v_n.assign(v.old)
+    displacement_old = Function(space.function_space_split[0])
+    velocity_old = Function(space.function_space_split[1])
+    displacement_old.assign(displacement.old)
+    velocity_old.assign(velocity.old)
 
     # Store old interface values
-    u_n_i = Function(space.V_split[0])
-    v_n_i = Function(space.V_split[1])
-    u_n_i.assign(u.i_old)
-    v_n_i.assign(v.i_old)
+    displacement_old_interface = Function(space.function_space_split[0])
+    velocity_old_interface = Function(space.function_space_split[1])
+    displacement_old_interface.assign(displacement.interface_old)
+    velocity_old_interface.assign(velocity.interface_old)
 
     # Initialize new interface values
-    u_i = Function(space.V_split[0])
-    v_i = Function(space.V_split[1])
+    displacement_interface = Function(space.function_space_split[0])
+    velocity_interface = Function(space.function_space_split[1])
 
     # Define Dirichlet boundary conditions
-    bc_u = DirichletBC(space.V.sub(0), Constant(0.0), boundary)
-    bc_v = DirichletBC(space.V.sub(1), Constant(0.0), boundary)
-    bcs = [bc_u, bc_v]
+    boundary_condition_displacement = DirichletBC(
+        space.function_space.sub(0), Constant(0.0), boundary
+    )
+    boundary_condition_velocity = DirichletBC(
+        space.function_space.sub(1), Constant(0.0), boundary
+    )
+    boundary_conditions = [
+        boundary_condition_displacement,
+        boundary_condition_velocity,
+    ]
 
-    # Compute fractional time-steps for fluid problem
-    for n in range(space.N):
+    # Define time pointers
+    if adjoint:
 
-         # Extrapolate weak boundary conditions on the interface
-         u_i.assign(project((space.N - n - 1.0)
-                           / space.N
-                           * u.i_old + (n + 1.0)
-                           / space.N
-                           * transfer_function(u_interface.new,
-                                               space, space_interface,
-                                               param, 0), space.V_split[0]))
-         v_i.assign(project((space.N - n - 1.0)
-                           / space.N
-                           * v.i_old + (n + 1.0)
-                           / space.N
-                           * transfer_function(v_interface.new,
-                                               space, space_interface,
-                                               param, 1), space.V_split[1]))
+        microtimestep = macrotimestep.tail.before
 
-         # Define trial and test functions
-         U_new = TrialFunction(space.V)
-         (u_new, v_new) = split(U_new)
-         Phi = TestFunction(space.V)
-         (phi, psi) = split(Phi)
+    else:
 
-         # Define scheme
-         a = A(u_new, v_new, phi, psi, space, param)
-         if first_time_step and n == 0:
+        microtimestep = macrotimestep.head
+    microtimestep_before = None
+    microtimestep_after = None
 
-             l = L_0(u_n, v_n, u_i, v_i, u_n_i, v_n_i,
-                     phi, psi, space, param, t)
+    # Compute macro time-step size
+    size = macrotimestep.size - 1
+    for m in range(size):
 
-         else:
+        # Extrapolate weak boundary conditions on the interface
+        if adjoint:
 
-             l = L(u_n, v_n, u_i, v_i, u_n_i, v_n_i,
-                   phi, psi, space, param, t)
+            extrapolation_proportion = (
+                microtimestep.point - macrotimestep.head.point
+            ) / macrotimestep.dt
+            time_step = microtimestep.dt
+            microtimestep_adjoint = microtimestep.after
+            microtimestep_adjoint_before = microtimestep
+            if m == 0 and macrotimestep.after is None:
+                time_step_old = microtimestep.dt
+                microtimestep_adjoint_after = microtimestep_adjoint
+            elif m == 0:
+                time_step_old = macrotimestep.microtimestep_after.before.dt
+                microtimestep_adjoint_after = macrotimestep.microtimestep_after
+            else:
+                time_step_old = microtimestep.after.dt
+                microtimestep_adjoint_after = microtimestep_adjoint.after
 
-         # Solve fluid problem
-         U_new = Function(space.V)
-         solve(a == l, U_new, bcs)
-         (u_new, v_new) = U_new.split(U_new)
+        else:
 
-         # Save solutions
-         if save:
+            extrapolation_proportion = (
+                macrotimestep.tail.point - microtimestep.after.point
+            ) / macrotimestep.dt
+            time_step = microtimestep.dt
+            time_step_old = microtimestep.dt
 
-             u.save(u_new)
-             v.save(v_new)
+        displacement_interface.assign(
+            project(
+                extrapolation_proportion * displacement.interface_old
+                + (1.0 - extrapolation_proportion)
+                * transfer_function(
+                    given_displacement.new, space, space_interface, param, 0
+                ),
+                space.function_space_split[0],
+            )
+        )
+        velocity_interface.assign(
+            project(
+                extrapolation_proportion * velocity.interface_old
+                + (1.0 - extrapolation_proportion)
+                * transfer_function(
+                    given_velocity.new, space, space_interface, param, 1
+                ),
+                space.function_space_split[1],
+            )
+        )
 
-         # Update fluid solution
-         u_n.assign(u_new)
-         v_n.assign(v_new)
+        # Define trial and test functions
+        trial_function = TrialFunction(space.function_space)
+        (displacement_new, velocity_new) = split(trial_function)
+        test_function = TestFunction(space.function_space)
+        (phi, psi) = split(test_function)
 
-         # Update boundary conditions
-         u_n_i.assign(project(u_i, space.V_split[0]))
-         v_n_i.assign(project(v_i, space.V_split[1]))
+        # Define scheme
+        time = microtimestep.after.point
+        left_hand_side = bilinear_form(
+            displacement_new, velocity_new, phi, psi, space, param, time_step
+        )
+        if adjoint and first_time_step and m == 0:
+
+            right_hand_side = functional_initial(
+                displacement_old,
+                velocity_old,
+                displacement_interface,
+                velocity_interface,
+                displacement_old_interface,
+                velocity_old_interface,
+                phi,
+                psi,
+                space,
+                param,
+                time,
+                time_step,
+                microtimestep_adjoint_before,
+                microtimestep_adjoint,
+            )
+
+        elif adjoint:
+
+            right_hand_side = functional(
+                displacement_old,
+                velocity_old,
+                displacement_interface,
+                velocity_interface,
+                displacement_old_interface,
+                velocity_old_interface,
+                phi,
+                psi,
+                space,
+                param,
+                time,
+                time_step,
+                time_step_old,
+                microtimestep_adjoint_before,
+                microtimestep_adjoint,
+                microtimestep_adjoint_after,
+            )
+
+        else:
+
+            right_hand_side = functional(
+                displacement_old,
+                velocity_old,
+                displacement_interface,
+                velocity_interface,
+                displacement_old_interface,
+                velocity_old_interface,
+                phi,
+                psi,
+                space,
+                param,
+                time,
+                time_step,
+            )
+
+        # Solve problem
+        trial_function = Function(space.function_space)
+        solve(
+            left_hand_side == right_hand_side,
+            trial_function,
+            boundary_conditions,
+        )
+        (displacement_new, velocity_new) = trial_function.split(trial_function)
+
+        # Save solutions
+        if save:
+
+            displacement.save(displacement_new)
+            velocity.save(velocity_new)
+
+        # Update solution
+        displacement_old.assign(displacement_new)
+        velocity_old.assign(velocity_new)
+
+        # Update boundary conditions
+        displacement_old_interface.assign(
+            project(displacement_interface, space.function_space_split[0])
+        )
+        velocity_old_interface.assign(
+            project(velocity_interface, space.function_space_split[1])
+        )
+
+        # Advance timeline
+        if adjoint:
+
+            microtimestep = microtimestep.before
+
+        else:
+
+            microtimestep = microtimestep.after
 
     # Save final values
-    u.new.assign(u_new)
-    v.new.assign(v_new)
-    u.i_new.assign(u_i)
-    v.i_new.assign(v_i)
+    displacement.new.assign(displacement_new)
+    velocity.new.assign(velocity_new)
+    displacement.interface_new.assign(displacement_interface)
+    velocity.interface_new.assign(velocity_interface)
 
     return
