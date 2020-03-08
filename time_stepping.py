@@ -1,8 +1,14 @@
-from fenics import Function
+from fenics import Function, DirichletBC, Constant
 from solve_problem import solve_problem
 from coupling import solid_to_fluid, fluid_to_solid
 from initial import Initial
-from spaces import Space
+from spaces import (
+    Space,
+    boundary_up,
+    boundary_left,
+    boundary_right,
+    boundary_down,
+    boundary_between)
 from parameters import Parameters
 from time_structure import TimeLine
 
@@ -47,6 +53,53 @@ def time_stepping(
     velocity_solid = Initial(
         "solid", velocity_name, solid.function_space_split[1]
     )
+
+    # Define Dirichlet boundary conditions
+    if not adjoint:
+        fluid.boundaries = [
+            DirichletBC(fluid.function_space_split[1], Constant(0.0), boundary_between),
+            DirichletBC(fluid.function_space_split[1], Constant(0.0), boundary_up),
+            DirichletBC(fluid.function_space_split[1], Constant(0.0), boundary_left),
+            DirichletBC(fluid.function_space_split[1], Constant(0.0), boundary_right)
+        ]
+        solid.boundaries = [
+            DirichletBC(solid.function_space.sub(0), Constant(0.0), boundary_left),
+            DirichletBC(solid.function_space.sub(1), Constant(0.0), boundary_left),
+            DirichletBC(solid.function_space.sub(0), Constant(0.0), boundary_right),
+            DirichletBC(solid.function_space.sub(1), Constant(0.0), boundary_right),
+            DirichletBC(solid.function_space.sub(0), Constant(0.0), boundary_down),
+            DirichletBC(solid.function_space.sub(1), Constant(0.0), boundary_down)
+        ]
+    elif adjoint and param.GOAL_FUNCTIONAL_FLUID:
+        fluid.boundaries = [
+            DirichletBC(fluid.function_space_split[0], Constant(0.0), boundary_between),
+            DirichletBC(fluid.function_space_split[0], Constant(0.0), boundary_up),
+            DirichletBC(fluid.function_space_split[0], Constant(0.0), boundary_left),
+            DirichletBC(fluid.function_space_split[0], Constant(0.0), boundary_right),
+        ]
+        solid.boundaries = [
+            DirichletBC(solid.function_space.sub(0), Constant(0.0), boundary_left),
+            DirichletBC(solid.function_space.sub(1), Constant(0.0), boundary_left),
+            DirichletBC(solid.function_space.sub(0), Constant(0.0), boundary_right),
+            DirichletBC(solid.function_space.sub(1), Constant(0.0), boundary_right),
+            DirichletBC(solid.function_space.sub(0), Constant(0.0), boundary_down),
+            DirichletBC(solid.function_space.sub(1), Constant(0.0), boundary_down)
+        ]
+    else:
+        fluid.boundaries = [
+            DirichletBC(fluid.function_space_split[0], Constant(0.0), boundary_up),
+            DirichletBC(fluid.function_space_split[0], Constant(0.0), boundary_left),
+            DirichletBC(fluid.function_space_split[0], Constant(0.0), boundary_right),
+        ]
+        solid.boundaries = [
+            DirichletBC(solid.function_space.sub(0), Constant(0.0), boundary_between),
+            DirichletBC(solid.function_space.sub(0), Constant(0.0), boundary_left),
+            DirichletBC(solid.function_space.sub(1), Constant(0.0), boundary_left),
+            DirichletBC(solid.function_space.sub(0), Constant(0.0), boundary_right),
+            DirichletBC(solid.function_space.sub(1), Constant(0.0), boundary_right),
+            DirichletBC(solid.function_space.sub(0), Constant(0.0), boundary_down),
+            DirichletBC(solid.function_space.sub(1), Constant(0.0), boundary_down)
+        ]
 
     # Save initial values for the primal problem
     if not adjoint:
@@ -103,7 +156,17 @@ def time_stepping(
             adjoint,
         )
 
-        # Perform final iteration and save solutions
+        # Define Dirichlet boundary conditions
+        if not adjoint:
+            boundary_velocity = solid_to_fluid(velocity_solid.new, fluid, solid, param, 1)
+            fluid.boundaries = [
+                DirichletBC(fluid.function_space_split[1], boundary_velocity, boundary_between),
+                DirichletBC(fluid.function_space_split[1], Constant(0.0), boundary_up),
+                DirichletBC(fluid.function_space_split[1], Constant(0.0), boundary_left),
+                DirichletBC(fluid.function_space_split[1], Constant(0.0), boundary_right)
+            ]
+
+        # Solve fluid problem
         solve_problem(
             displacement_fluid,
             velocity_fluid,
@@ -121,6 +184,8 @@ def time_stepping(
             adjoint,
             save=True,
         )
+
+        # Solve solid problem
         solve_problem(
             displacement_solid,
             velocity_solid,
@@ -175,7 +240,6 @@ def time_stepping(
         velocity_solid.save(Function(solid.function_space_split[1]))
 
     # Check convergence
-    [print(linear_systems) for linear_systems in displacement_fluid.iterations]
     failed = 0
     for i in range(len(displacement_fluid.iterations)):
         failed += min(0, displacement_fluid.iterations[i])

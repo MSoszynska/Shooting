@@ -84,25 +84,6 @@ def form_fluid(
 
     return (
         param.NU * dot(grad(velocity_fluid), grad(phi_fluid)) * fluid.dx
-        + dot(param.BETA, grad(velocity_fluid)) * phi_fluid * fluid.dx
-        + dot(grad(displacement_fluid), grad(psi_fluid)) * fluid.dx
-        - dot(grad(displacement_fluid), fluid.normal_vector)
-        * psi_fluid
-        * fluid.ds(1)
-        - param.NU
-        * dot(grad(velocity_fluid), fluid.normal_vector)
-        * phi_fluid
-        * fluid.ds(1)
-        + param.GAMMA
-        / fluid.cell_size
-        * displacement_fluid
-        * psi_fluid
-        * fluid.ds(1)
-        + param.GAMMA
-        / fluid.cell_size
-        * velocity_fluid
-        * phi_fluid
-        * fluid.ds(1)
     )
 
 
@@ -158,34 +139,6 @@ def functional_fluid(
             fluid,
             param,
         )
-        + 0.5
-        * time_step
-        * param.GAMMA
-        / fluid.cell_size
-        * displacement_fluid_interface
-        * psi_fluid
-        * fluid.ds(1)
-        + 0.5
-        * time_step
-        * param.GAMMA
-        / fluid.cell_size
-        * velocity_fluid_interface
-        * phi_fluid
-        * fluid.ds(1)
-        + 0.5
-        * time_step
-        * param.GAMMA
-        / fluid.cell_size
-        * displacement_fluid_old_interface
-        * psi_fluid
-        * fluid.ds(1)
-        + 0.5
-        * time_step
-        * param.GAMMA
-        / fluid.cell_size
-        * velocity_fluid_old_interface
-        * phi_fluid
-        * fluid.ds(1)
         + time_step * external_force(time) * phi_fluid * fluid.dx
     )
 
@@ -204,27 +157,6 @@ def form_fluid_adjoint(
         param.NU
         * dot(grad(eta_fluid), grad(displacement_fluid_adjoint))
         * fluid.dx
-        + dot(param.BETA, grad(eta_fluid))
-        * displacement_fluid_adjoint
-        * fluid.dx
-        + dot(grad(xi_fluid), grad(velocity_fluid_adjoint)) * fluid.dx
-        - dot(grad(xi_fluid), fluid.normal_vector)
-        * velocity_fluid_adjoint
-        * fluid.ds(1)
-        - param.NU
-        * dot(grad(eta_fluid), fluid.normal_vector)
-        * displacement_fluid_adjoint
-        * fluid.ds(1)
-        + param.GAMMA
-        / fluid.cell_size
-        * xi_fluid
-        * velocity_fluid_adjoint
-        * fluid.ds(1)
-        + param.GAMMA
-        / fluid.cell_size
-        * eta_fluid
-        * displacement_fluid_adjoint
-        * fluid.ds(1)
     )
 
 
@@ -246,12 +178,6 @@ def functional_fluid_adjoint_initial(
 ):
 
     return (
-        0.5
-        * time_step
-        * param.NU
-        * dot(grad(eta_fluid), fluid.normal_vector)
-        * displacement_fluid_adjoint_interface
-        * fluid.ds(1)
         + 2.0 * param.NU
         * characteristic_function_fluid(param)
         * dot(
@@ -320,18 +246,6 @@ def functional_fluid_adjoint(
             fluid,
             param,
         )
-        + 0.5
-        * time_step
-        * param.NU
-        * dot(grad(eta_fluid), fluid.normal_vector)
-        * displacements_fluid_adjoint_interface
-        * fluid.ds(1)
-        + 0.5
-        * time_step_old
-        * param.NU
-        * dot(grad(eta_fluid), fluid.normal_vector)
-        * displacement_fluid_adjoint_old_interface
-        * fluid.ds(1)
         + 2.0 * param.NU
         * characteristic_function_fluid(param)
         * dot(
@@ -486,20 +400,6 @@ def functional_solid_adjoint_initial(
 ):
 
     return (
-        0.5
-        * time_step
-        * param.GAMMA
-        / solid.cell_size
-        * xi_solid
-        * velocity_solid_adjoint_interface
-        * solid.ds(1)
-        + 0.5
-        * time_step
-        * param.GAMMA
-        / solid.cell_size
-        * eta_solid
-        * displacement_solid_adjoint_interface
-        * solid.ds(1)
         + 2.0 * param.ZETA
         * characteristic_function_solid(param)
         * dot(
@@ -570,34 +470,6 @@ def functional_solid_adjoint(
             solid,
             param,
         )
-        + 0.5
-        * time_step
-        * param.GAMMA
-        / solid.cell_size
-        * xi_solid
-        * velocity_solid_adjoint_interface
-        * solid.ds(1)
-        + 0.5
-        * time_step
-        * param.GAMMA
-        / solid.cell_size
-        * eta_solid
-        * displacement_solid_adjoint_interface
-        * solid.ds(1)
-        + 0.5
-        * time_step_old
-        * param.GAMMA
-        / solid.cell_size
-        * xi_solid
-        * velocity_solid_adjoint_old_interface
-        * solid.ds(1)
-        + 0.5
-        * time_step_old
-        * param.GAMMA
-        / solid.cell_size
-        * eta_solid
-        * displacement_solid_adjoint_old_interface
-        * solid.ds(1)
         + 2.0 * param.ZETA
         * characteristic_function_solid(param)
         * dot(

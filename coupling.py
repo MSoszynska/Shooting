@@ -18,7 +18,7 @@ def fluid_to_solid(
     )
     horizontal = param.NUMBER_ELEMENTS_HORIZONTAL + 1
     vertical = param.NUMBER_ELEMENTS_VERTICAL + 1
-    for i in range(2):
+    for i in range(3):
 
         for j in range(horizontal):
 
@@ -45,7 +45,7 @@ def solid_to_fluid(
     )
     horizontal = param.NUMBER_ELEMENTS_HORIZONTAL + 1
     vertical = param.NUMBER_ELEMENTS_VERTICAL + 1
-    for i in range(2):
+    for i in range(3):
 
         for j in range(horizontal):
 

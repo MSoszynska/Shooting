@@ -135,7 +135,6 @@ def extrapolate_list_forward(
 
     return array
 
-
 # Extrapolate a list to a different space in the same direction
 def extrapolate_list_backward(
     space: Space,
@@ -233,7 +232,7 @@ def primal_reconstruction(array, m, time, microtimestep: MicroTimeStep):
     ) / (2.0 * time_step * time_step)
 
     return a * time * time + b * time + c
-
+    #return a * 0.0
 
 def primal_derivative(array, m, time, microtimestep: MicroTimeStep):
 
@@ -249,6 +248,7 @@ def primal_derivative(array, m, time, microtimestep: MicroTimeStep):
     ) / (2.0 * time_step * time_step)
 
     return 2.0 * a * time + b
+    #return a * 0.0
 
 # Define reconstruction of the adjoint problem
 def adjoint_reconstruction(array, m, time, microtimestep, macrotimestep):
@@ -256,8 +256,8 @@ def adjoint_reconstruction(array, m, time, microtimestep, macrotimestep):
     size = len(array) - 1
     if m == 1 or m == size:
 
-        #return linear_extrapolation(array, m, time, microtimestep)
-        return linear_extrapolation(array, m, time, microtimestep) * 0.0
+        return linear_extrapolation(array, m, time, microtimestep)
+        #return linear_extrapolation(array, m, time, microtimestep) * 0.0
 
     else:
 
@@ -294,6 +294,7 @@ def adjoint_reconstruction(array, m, time, microtimestep, macrotimestep):
             / (t_average_before - t_average_after)
             * array[m - 1]
         )
+        # return array[m - 1] * 0.0
 
 # Compute goal functionals
 def goal_functional_fluid(
@@ -561,86 +562,6 @@ def primal_residual_fluid(
                     fluid,
                     param,
                 )
-            )
-            lhs -= (
-                0.5
-                * time_step
-                * param.GAMMA
-                / fluid.cell_size
-                * linear_extrapolation(
-                    displacement_solid_array, m, gauss_1, microtimestep
-                )
-                * (
-                    adjoint_reconstruction(
-                        displacement_fluid_adjoint_array,
-                        m,
-                        gauss_1,
-                        microtimestep,
-                        macrotimestep,
-                    )
-                    - displacement_fluid_adjoint_array[m]
-                )
-                * fluid.ds(1)
-            )
-            lhs -= (
-                0.5
-                * time_step
-                * param.GAMMA
-                / fluid.cell_size
-                * linear_extrapolation(
-                    displacement_solid_array, m, gauss_2, microtimestep
-                )
-                * (
-                    adjoint_reconstruction(
-                        displacement_fluid_adjoint_array,
-                        m,
-                        gauss_2,
-                        microtimestep,
-                        macrotimestep,
-                    )
-                    - displacement_fluid_adjoint_array[m]
-                )
-                * fluid.ds(1)
-            )
-            lhs -= (
-                0.5
-                * time_step
-                * param.GAMMA
-                / fluid.cell_size
-                * linear_extrapolation(
-                    velocity_solid_array, m, gauss_1, microtimestep
-                )
-                * (
-                    adjoint_reconstruction(
-                        velocity_fluid_adjoint_array,
-                        m,
-                        gauss_1,
-                        microtimestep,
-                        macrotimestep,
-                    )
-                    - velocity_fluid_adjoint_array[m]
-                )
-                * fluid.ds(1)
-            )
-            lhs -= (
-                0.5
-                * time_step
-                * param.GAMMA
-                / fluid.cell_size
-                * linear_extrapolation(
-                    velocity_solid_array, m, gauss_2, microtimestep
-                )
-                * (
-                    adjoint_reconstruction(
-                        velocity_fluid_adjoint_array,
-                        m,
-                        gauss_2,
-                        microtimestep,
-                        macrotimestep,
-                    )
-                    - velocity_fluid_adjoint_array[m]
-                )
-                * fluid.ds(1)
             )
             rhs += (
                 0.5
@@ -1052,48 +973,6 @@ def adjoint_residual_fluid(
                     param,
                 )
             )
-            lhs -= (
-                0.5
-                * time_step
-                * param.NU
-                * dot(
-                    grad(
-                        primal_reconstruction(
-                            velocity_fluid_array,
-                            l,
-                            gauss_1,
-                            microtimestep_adjust,
-                        )
-                        - linear_extrapolation(
-                            velocity_fluid_array, m, gauss_1, microtimestep
-                        )
-                    ),
-                    fluid.normal_vector,
-                )
-                * displacement_solid_adjoint[m]
-                * fluid.ds(1)
-            )
-            lhs -= (
-                0.5
-                * time_step
-                * param.NU
-                * dot(
-                    grad(
-                        primal_reconstruction(
-                            velocity_fluid_array,
-                            l,
-                            gauss_2,
-                            microtimestep_adjust,
-                        )
-                        - linear_extrapolation(
-                            velocity_fluid_array, m, gauss_2, microtimestep
-                        )
-                    ),
-                    fluid.normal_vector,
-                )
-                * displacement_solid_adjoint[m]
-                * fluid.ds(1)
-            )
             rhs += (
                 0.5
                 * time_step
@@ -1311,70 +1190,6 @@ def adjoint_residual_solid(
                     solid,
                     param,
                 )
-            )
-            lhs -= (
-                0.5
-                * time_step
-                * param.GAMMA
-                / solid.cell_size
-                * (
-                    primal_reconstruction(
-                        displacement_solid, l, gauss_1, microtimestep_adjust
-                    )
-                    - linear_extrapolation(
-                        displacement_solid, m, gauss_1, microtimestep
-                    )
-                )
-                * velocity_fluid_adjoint[m]
-                * solid.ds(1)
-            )
-            lhs -= (
-                0.5
-                * time_step
-                * param.GAMMA
-                / solid.cell_size
-                * (
-                    primal_reconstruction(
-                        displacement_solid, l, gauss_2, microtimestep_adjust
-                    )
-                    - linear_extrapolation(
-                        displacement_solid, m, gauss_2, microtimestep
-                    )
-                )
-                * velocity_fluid_adjoint[m]
-                * solid.ds(1)
-            )
-            lhs -= (
-                0.5
-                * time_step
-                * param.GAMMA
-                / solid.cell_size
-                * (
-                    primal_reconstruction(
-                        velocity_solid, l, gauss_1, microtimestep_adjust
-                    )
-                    - linear_extrapolation(
-                        velocity_solid, m, gauss_1, microtimestep
-                    )
-                )
-                * displacement_fluid_adjoint[m]
-                * solid.ds(1)
-            )
-            lhs -= (
-                0.5
-                * time_step
-                * param.GAMMA
-                / solid.cell_size
-                * (
-                    primal_reconstruction(
-                        velocity_solid, l, gauss_2, microtimestep_adjust
-                    )
-                    - linear_extrapolation(
-                        velocity_solid, m, gauss_2, microtimestep
-                    )
-                )
-                * displacement_fluid_adjoint[m]
-                * solid.ds(1)
             )
             rhs += (
                 0.5

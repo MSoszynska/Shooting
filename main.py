@@ -8,9 +8,13 @@ from fenics import (
     SubMesh,
     HDF5File,
     MPI,
+    DirichletBC,
+    Constant
 )
 from parameters import Parameters
-from spaces import Inner_boundary, Space
+from spaces import (
+    Inner_boundary,
+    Space)
 from time_structure import TimeLine, split
 from time_stepping import time_stepping
 from forms import (
@@ -53,9 +57,9 @@ inner_boundary = Inner_boundary()
 mesh_i = SubMesh(boundary_mesh, inner_boundary)
 
 # Create function spaces
-fluid = Space(mesh_f, param.LOCAL_MESH_SIZE_FLUID)
-solid = Space(mesh_s, param.LOCAL_MESH_SIZE_SOLID)
-interface = Space(mesh_i)
+fluid = Space(mesh_f, "fluid")
+solid = Space(mesh_s, "solid")
+interface = Space(mesh_i, "name")
 
 # Create time interval structures
 fluid_timeline = TimeLine()
@@ -79,7 +83,7 @@ else:
 # Refine time meshes
 fluid_size = fluid_timeline.size_global - fluid_timeline.size
 solid_size = solid_timeline.size_global - solid_timeline.size
-for i in range(0):
+for i in range(param.REFINEMENT_LEVELS):
 
     fluid_refinements_txt = open(
         f"fluid_{fluid_size}-{solid_size}_refinements.txt", "r"
@@ -114,43 +118,45 @@ os.chdir(f"{fluid_size}-{solid_size}")
 
 # Perform time-stepping of the primal problem
 adjoint = False
-time_stepping(
-    functional_fluid,
-    functional_solid,
-    bilinear_form_fluid,
-    functional_fluid,
-    bilinear_form_solid,
-    functional_solid,
-    fluid,
-    solid,
-    interface,
-    param,
-    decoupling,
-    fluid_timeline,
-    solid_timeline,
-    adjoint,
-)
+if param.COMPUTE_PRIMAL:
+    time_stepping(
+        functional_fluid,
+        functional_solid,
+        bilinear_form_fluid,
+        functional_fluid,
+        bilinear_form_solid,
+        functional_solid,
+        fluid,
+        solid,
+        interface,
+        param,
+        decoupling,
+        fluid_timeline,
+        solid_timeline,
+        adjoint,
+    )
 fluid_timeline.load(fluid, "fluid", adjoint)
 solid_timeline.load(solid, "solid", adjoint)
 
 # Perform time-stepping of the adjoint problem
 adjoint = True
-time_stepping(
-    functional_fluid_adjoint_initial,
-    functional_solid_adjoint_initial,
-    bilinear_form_fluid_adjoint,
-    functional_fluid_adjoint,
-    bilinear_form_solid_adjoint,
-    functional_solid_adjoint,
-    fluid,
-    solid,
-    interface,
-    param,
-    decoupling,
-    fluid_timeline,
-    solid_timeline,
-    adjoint,
-)
+if param.COMPUTE_ADJOINT:
+    time_stepping(
+        functional_fluid_adjoint_initial,
+        functional_solid_adjoint_initial,
+        bilinear_form_fluid_adjoint,
+        functional_fluid_adjoint,
+        bilinear_form_solid_adjoint,
+        functional_solid_adjoint,
+        fluid,
+        solid,
+        interface,
+        param,
+        decoupling,
+        fluid_timeline,
+        solid_timeline,
+        adjoint,
+    )
 fluid_timeline.load(fluid, "fluid", adjoint)
 solid_timeline.load(solid, "solid", adjoint)
 

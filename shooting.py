@@ -1,10 +1,22 @@
 import numpy as np
-from fenics import Function, FunctionSpace, interpolate, project
+from fenics import (
+    Function,
+    FunctionSpace,
+    interpolate,
+    project,
+    DirichletBC,
+    Constant)
 from solve_problem import solve_problem
 from coupling import solid_to_fluid, fluid_to_solid
 from scipy.sparse.linalg import LinearOperator, gmres
 from parameters import Parameters
-from spaces import Space
+from spaces import (
+    Space,
+    boundary_up,
+    boundary_down,
+    boundary_right,
+    boundary_left,
+    boundary_between)
 from initial import Initial
 from time_structure import MacroTimeStep
 
@@ -36,7 +48,17 @@ def shooting_function(
     velocity_solid_new = Function(solid.function_space_split[1])
     velocity_solid_new.assign(velocity_solid.new)
 
-    # Perform one iteration
+    # Define Dirichlet boundary conditions
+    if not adjoint:
+        boundary_velocity = solid_to_fluid(velocity_solid.new, fluid, solid, param, 1)
+        fluid.boundaries = [
+            DirichletBC(fluid.function_space_split[1], boundary_velocity, boundary_between),
+            DirichletBC(fluid.function_space_split[1], Constant(0.0), boundary_up),
+            DirichletBC(fluid.function_space_split[1], Constant(0.0), boundary_left),
+            DirichletBC(fluid.function_space_split[1], Constant(0.0), boundary_right)
+        ]
+
+    # Solve fluid problem
     solve_problem(
         displacement_fluid,
         velocity_fluid,
@@ -53,6 +75,8 @@ def shooting_function(
         fluid_macrotimestep,
         adjoint,
     )
+
+    # Solve solid problem
     solve_problem(
         displacement_solid,
         velocity_solid,
@@ -241,7 +265,10 @@ def shooting(
         shooting_function_value_linf = np.max(np.abs(shooting_function_value))
         if number_of_iterations == 1:
 
-            shooting_function_value_initial_linf = shooting_function_value_linf
+            if shooting_function_value_linf!= 0.0:
+                shooting_function_value_initial_linf = shooting_function_value_linf
+            else:
+                shooting_function_value_initial_linf = 1.0
 
         print(
             f"Absolute error on the interface: "

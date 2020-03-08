@@ -1,10 +1,23 @@
-from fenics import Function, FunctionSpace, project, interpolate, norm
+from fenics import (
+    Function,
+    FunctionSpace,
+    project,
+    interpolate,
+    norm,
+    DirichletBC,
+    Constant)
 from solve_problem import solve_problem
 from coupling import solid_to_fluid, fluid_to_solid
 from parameters import Parameters
 from spaces import Space
 from time_structure import MacroTimeStep
 from initial import Initial
+from spaces import (
+    boundary_up,
+    boundary_down,
+    boundary_right,
+    boundary_left,
+    boundary_between)
 
 # Define relaxation method
 def relaxation(
@@ -30,7 +43,7 @@ def relaxation(
 
     # Define initial values for relaxation method
     displacement_solid_new = Function(solid.function_space_split[0])
-    velocity_displacement_new = Function(solid.function_space_split[1])
+    velocity_solid_new = Function(solid.function_space_split[1])
     number_of_iterations = 0
     stop = False
 
@@ -43,9 +56,19 @@ def relaxation(
 
         # Save old values
         displacement_solid_new.assign(displacement_solid.new)
-        velocity_displacement_new.assign(velocity_solid.new)
+        velocity_solid_new.assign(velocity_solid.new)
 
-        # Perform one iteration
+        # Define Dirichlet boundary conditions
+        if not adjoint:
+            boundary_velocity = solid_to_fluid(velocity_solid.new, fluid, solid, param, 1)
+            fluid.boundaries = [
+                DirichletBC(fluid.function_space_split[1], boundary_velocity, boundary_between),
+                DirichletBC(fluid.function_space_split[1], Constant(0.0), boundary_up),
+                DirichletBC(fluid.function_space_split[1], Constant(0.0), boundary_left),
+                DirichletBC(fluid.function_space_split[1], Constant(0.0), boundary_right)
+            ]
+
+        # Solve fluid problem
         solve_problem(
             displacement_fluid,
             velocity_fluid,
@@ -62,6 +85,8 @@ def relaxation(
             fluid_macrotimestep,
             adjoint,
         )
+
+        # Solve solid problem
         solve_problem(
             displacement_solid,
             velocity_solid,
@@ -79,48 +104,55 @@ def relaxation(
             adjoint,
         )
 
-        # Perform relaxation
-        displacement_solid.new.assign(
-            project(
-                param.TAU * displacement_solid.new
-                + (1.0 - param.TAU) * displacement_solid_new,
-                solid.function_space_split[0],
-            )
-        )
-        velocity_solid.new.assign(
-            project(
-                param.TAU * velocity_solid.new
-                + (1.0 - param.TAU) * velocity_displacement_new,
-                solid.function_space_split[1],
-            )
-        )
-
         # Define errors on the interface
-        displacement_error = interpolate(
-            project(
-                displacement_solid_new - displacement_solid.new,
-                solid.function_space_split[0],
-            ),
-            interface.function_space_split[0],
-        )
-        displacement_error_linf = norm(displacement_error.vector(), "linf")
-        velocity_error = interpolate(
-            project(
-                velocity_displacement_new - velocity_solid.new,
-                solid.function_space_split[1],
-            ),
-            interface.function_space_split[1],
-        )
-        velocity_error_linf = norm(velocity_error.vector(), "linf")
-        error_linf = max(displacement_error_linf, velocity_error_linf)
+        if not adjoint:
+            error = interpolate(
+                project(
+                    velocity_solid_new - velocity_solid.new,
+                    solid.function_space_split[1],
+                ),
+                interface.function_space_split[1],
+            )
+            error_linf = norm(error.vector(), "linf")
+        else:
+            error = interpolate(
+                project(
+                    displacement_solid_new - displacement_solid.new,
+                    solid.function_space_split[0],
+                ),
+                interface.function_space_split[0],
+            )
+            error_linf = norm(error.vector(), "linf")
+
         if number_of_iterations == 1:
 
-            error_initial_linf = error_linf
+            if error_linf != 0.0:
+                error_initial_linf = error_linf
+            else:
+                error_initial_linf = 1.0
 
         print(f"Absolute error on the interface: {error_linf}")
         print(
             f"Relative error on the interface: {error_linf / error_initial_linf}"
         )
+
+        # Perform relaxation
+        if not adjoint:
+            velocity_solid.new.assign(
+                project(
+                    param.TAU * velocity_solid.new
+                    + (1.0 - param.TAU) * velocity_solid_new,
+                    solid.function_space_split[1],
+                )
+            )
+        else:
+            displacement_solid.new.assign(
+                project(
+                    param.TAU * displacement_solid.new
+                    + (1.0 - param.TAU) * displacement_solid_new,
+                    solid.function_space_split[0],
+                )
+            )
 
         # Check stop conditions
         if (

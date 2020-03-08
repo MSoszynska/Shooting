@@ -4,11 +4,11 @@ from fenics import Expression, Constant
 def external_force(time):
 
     function = Expression(
-        "exp(-10.0 * (pow(x[0] - 0.5, 2) + pow(x[1] - 0.5, 2))) * sign",
+        "exp(-(pow(x[0] - 0.5, 2) + pow(x[1] - 0.5, 2))) * sign",
         sign=1.0,
         degree=1,
     )
-    if int(time) + 0.1 < time:
+    if int(time) + 0.1 <= time:
 
         function.sign = 0.0
 
@@ -19,12 +19,10 @@ class Parameters:
     def __init__(
         self,
         nu=Constant(0.001),
-        beta=Constant((5.0, 0.0)),
         zeta=Constant(1000.0),
-        delta=Constant(0.01),
-        gamma=Constant(1000.0),
-        time_step=0.00125,
-        global_mesh_size=800,
+        delta=Constant(0.1),
+        time_step=0.0025,
+        global_mesh_size=400,
         local_mesh_size_fluid=1,
         local_mesh_size_solid=1,
         number_elements_horizontal=80,
@@ -39,18 +37,20 @@ class Parameters:
         max_iterations_newton=15,
         tolerance_gmres=1.0e-12,
         max_iterations_gmres=10,
-        relaxation=False,
-        shooting=True,
+        relaxation=True,
+        shooting=False,
         goal_functional_fluid=True,
         goal_functional_solid=False,
+        compute_primal=True,
+        compute_adjoint=True,
+        refinement_levels=0,
+        monitor=False
     ):
 
         # Define problem parameters
         self.NU = nu
-        self.BETA = beta
         self.ZETA = zeta
         self.DELTA = delta
-        self.GAMMA = gamma
 
         # Define time step on the coarsest level
         self.TIME_STEP = time_step
@@ -91,3 +91,13 @@ class Parameters:
         # Choose goal functional
         self.GOAL_FUNCTIONAL_FLUID = goal_functional_fluid
         self.GOAL_FUNCTIONAL_SOLID = goal_functional_solid
+
+        # Decide if primal and adjoint problems should be solved
+        self.COMPUTE_PRIMAL = compute_primal
+        self.COMPUTE_ADJOINT = compute_adjoint
+
+        # Set number of refinement levels
+        self.REFINEMENT_LEVELS = refinement_levels
+
+        # Decide if interface values should be printed
+        self.MONITOR = monitor
